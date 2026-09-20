@@ -5,6 +5,7 @@ import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
+import android.database.sqlite.SQLiteStatement;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -154,17 +155,19 @@ public class Db extends SQLiteOpenHelper {
         return count("SELECT COUNT(*) FROM courses");
     }
 
-    public void saveCourse(String id, String name, String teacher, String color) {
+        public void saveCourse(String id, String name, String teacher, String color) {
         ContentValues v = new ContentValues();
         v.put("id", id);
         v.put("name", name);
         v.put("teacher", teacher);
         v.put("color", color);
-        if (course(id) == null) {
+        // update() 的返回值就是受影响行数，0 表示没有这一行——用它替掉
+        // 「先 SELECT 一次判存在」。同样一条语句少一次查询，也没有
+        // 「查完到写之间那行被删掉」的竞态。
+        int rows = getWritableDatabase().update("courses", v, "id=?", new String[]{id});
+        if (rows == 0) {
             v.put("sort", courseCount());
             getWritableDatabase().insert("courses", null, v);
-        } else {
-            getWritableDatabase().update("courses", v, "id=?", new String[]{id});
         }
     }
 
@@ -228,7 +231,7 @@ public class Db extends SQLiteOpenHelper {
         return n;
     }
 
-    public void saveNote(Note n) {
+        public void saveNote(Note n) {
         ContentValues v = new ContentValues();
         v.put("id", n.id);
         v.put("course_id", n.courseId);
@@ -237,12 +240,11 @@ public class Db extends SQLiteOpenHelper {
         v.put("content", n.content);
         v.put("keypoints", joinString(n.keyPoints));
         v.put("pinned", n.pinned ? 1 : 0);
-        v.put("created", n.created == 0 ? System.currentTimeMillis() : n.created);
-        if (note(n.id) == null) {
+        // 更新时不写 created（保留原创建时间），只有真要插入才带上。
+        int rows = getWritableDatabase().update("notes", v, "id=?", new String[]{n.id});
+        if (rows == 0) {
+            v.put("created", n.created == 0 ? System.currentTimeMillis() : n.created);
             getWritableDatabase().insert("notes", null, v);
-        } else {
-            v.remove("created");
-            getWritableDatabase().update("notes", v, "id=?", new String[]{n.id});
         }
     }
 
@@ -295,7 +297,7 @@ public class Db extends SQLiteOpenHelper {
         return t;
     }
 
-    public void saveTodo(Todo t) {
+        public void saveTodo(Todo t) {
         ContentValues v = new ContentValues();
         v.put("id", t.id);
         v.put("course_id", t.courseId);
@@ -303,12 +305,10 @@ public class Db extends SQLiteOpenHelper {
         v.put("due", t.due);
         v.put("priority", t.priority == null ? "medium" : t.priority);
         v.put("completed", t.completed ? 1 : 0);
-        v.put("created", t.created == 0 ? System.currentTimeMillis() : t.created);
-        if (todo(t.id) == null) {
+        int rows = getWritableDatabase().update("todos", v, "id=?", new String[]{t.id});
+        if (rows == 0) {
+            v.put("created", t.created == 0 ? System.currentTimeMillis() : t.created);
             getWritableDatabase().insert("todos", null, v);
-        } else {
-            v.remove("created");
-            getWritableDatabase().update("todos", v, "id=?", new String[]{t.id});
         }
     }
 
@@ -321,6 +321,78 @@ public class Db extends SQLiteOpenHelper {
     public void deleteTodo(String id) {
         getWritableDatabase().delete("todos", "id=?", new String[]{id});
     }
+
+    // ---------------- 批量导入 ----------------
+
+    /**
+     * 清空 + 重建，全程一个事务。
+     *
+     * 和逐条 saveXxx() 的两点区别：
+     *  1. 语句只编译一次（compileStatement），循环里只做 bind + execute。
+     *     逐条走 saveNote() 的话，SQLite 每条都要重新解析一遍 SQL。
+     *  2. 完全不查存在性。导入是「先清空再重建」，表里必然没有这些 id——
+     *     原来每条都要 SELECT 一次，500 条笔记就是 500 次白跑的查询。
+     *
+     * 事务收在这里，调用方不必再自己包一层：deleteCourse() 内部自带事务，
+     * 嵌在外层事务里一旦失败只回滚内层，外层照样提交，会留下半新半旧的库。
+     */
+    public void replaceAll(final List<Course> courses, final List<Note> notes,
+                           final List<Todo> todos) {
+        transaction(new Runnable() {
+            @Override public void run() {
+                SQLiteDatabase db = getWritableDatabase();
+                db.delete("notes", null, null);
+                db.delete("todos", null, null);
+                db.delete("courses", null, null);
+
+                SQLiteStatement sc = db.compileStatement(
+                        "INSERT INTO courses(id,name,teacher,color,sort) VALUES(?,?,?,?,?)");
+                for (int i = 0; i < courses.size(); i++) {
+                    Course c = courses.get(i);
+                    sc.clearBindings();
+                    sc.bindString(1, nz(c.id));
+                    sc.bindString(2, nz(c.name));
+                    sc.bindString(3, nz(c.teacher));
+                    sc.bindString(4, nz(c.color));
+                    sc.bindLong(5, i);        // sort 按导入顺序，决定列表里的先后
+                    sc.execute();
+                }
+
+                SQLiteStatement sn = db.compileStatement(
+                        "INSERT INTO notes(id,course_id,title,date,content,keypoints,pinned,created)"
+                                + " VALUES(?,?,?,?,?,?,?,?)");
+                for (Note n : notes) {
+                    sn.clearBindings();
+                    sn.bindString(1, nz(n.id));
+                    sn.bindString(2, nz(n.courseId));
+                    sn.bindString(3, nz(n.title));
+                    sn.bindString(4, nz(n.date));
+                    sn.bindString(5, nz(n.content));
+                    sn.bindString(6, joinString(n.keyPoints));
+                    sn.bindLong(7, n.pinned ? 1 : 0);
+                    sn.bindLong(8, n.created == 0 ? System.currentTimeMillis() : n.created);
+                    sn.execute();
+                }
+
+                SQLiteStatement st = db.compileStatement(
+                        "INSERT INTO todos(id,course_id,title,due,priority,completed,created)"
+                                + " VALUES(?,?,?,?,?,?,?)");
+                for (Todo t : todos) {
+                    st.clearBindings();
+                    st.bindString(1, nz(t.id));
+                    st.bindString(2, nz(t.courseId));
+                    st.bindString(3, nz(t.title));
+                    st.bindString(4, nz(t.due));
+                    st.bindString(5, t.priority == null ? "medium" : t.priority);
+                    st.bindLong(6, t.completed ? 1 : 0);
+                    st.bindLong(7, t.created == 0 ? System.currentTimeMillis() : t.created);
+                    st.execute();
+                }
+            }
+        });
+    }
+
+    private static String nz(String s) { return s == null ? "" : s; }
 
     // ---------------- 统计 ----------------
 

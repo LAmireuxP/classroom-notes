@@ -1,6 +1,5 @@
 package com.lamireuxp.classroom;
 
-import android.app.Activity;
 import android.content.Context;
 import android.net.Uri;
 
@@ -95,20 +94,11 @@ public final class Backup {
         JSONArray courses = root.optJSONArray("courses");
         if (courses == null) throw new Exception("文件格式不正确");
 
-        final Parsed parsed = parse(courses);
-        final Db db = Db.get(c);
-        db.transaction(new Runnable() {
-            @Override public void run() {
-                List<Db.Course> old = db.courses();
-                for (Db.Course o : old) db.deleteCourse(o.id);
-                // 课程先写：sort 是按当前课程数算的，顺序决定列表里的先后
-                for (Db.Course co : parsed.courses) {
-                    db.saveCourse(co.id, co.name, co.teacher, co.color);
-                }
-                for (Db.Note n : parsed.notes) db.saveNote(n);
-                for (Db.Todo t : parsed.todos) db.saveTodo(t);
-            }
-        });
+        Parsed parsed = parse(courses);
+        // 清空 + 重建整个交给 replaceAll：它自己开一个事务，内部用预编译语句批量写。
+        // 不再逐条查存在性，也不再出现「外层事务里套内层事务」——
+        // 那样一旦内层失败只回滚内层，外层照样提交，会留下半新半旧的库。
+        Db.get(c).replaceAll(parsed.courses, parsed.notes, parsed.todos);
         return parsed.courses.size();
     }
 

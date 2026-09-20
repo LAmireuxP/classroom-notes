@@ -1,7 +1,7 @@
 # 课堂笔记 · Android 原生版
 
 课程笔记、待办、语音转写、AI 总结。纯原生 Java 实现，零第三方依赖，APK 约 187 KB。
-当前版本 **1.2**。
+当前版本 **1.2.1**。
 
 ## 功能
 
@@ -14,7 +14,7 @@
 
 ## 下载
 
-- 应用（国内可直连）：https://lamireuxp.github.io/classroom-notes/dist/classroom-1.2.apk
+- 应用（国内可直连）：https://lamireuxp.github.io/classroom-notes/dist/classroom-1.2.1.apk
 - 发布页：https://github.com/LAmireuxP/classroom-notes/releases
 
 安装前请先卸载签名不同的旧版本；笔记数据用应用内「导出备份 / 导入备份」迁移。
@@ -62,6 +62,31 @@ App 里的对应行为：
 自建的 whisper.cpp 或任意 OpenAI 兼容转写接口。
 
 ## 更新日志
+
+### 1.2.1
+
+这一版是**代码清理与写入路径优化**，没有改动任何界面与功能行为——你在 1.2 里看到的东西，
+1.2.1 一模一样。
+
+- **修复「按下缩放」会挤掉触摸监听**：`Ui.pressScale()` 原来用 `OnTouchListener` 实现按下缩放。
+  Android 没有 `getOnTouchListener()`，谁先 `setOnTouchListener` 谁就永久占住这个位置，
+  第二个想监听触摸的人只能把它顶掉——两个需求只能活一个。改成 `StateListAnimator`
+  （挂在 `state_pressed` 上的系统正规机制），完全退出触摸链路，涟漪 / 点击 / 将来任何手势都不再冲突。
+  行为肉眼无差别。
+- **批量写入优化**：
+  - 单条写入 `saveCourse/saveNote/saveTodo` 不再「先 SELECT 判存在」，
+    改用 `update()` 返回的**受影响行数**判定（`rows == 0` 即不存在）。每条语句少一次查询，
+    同时消除了「查完到写之间那行被删掉」的竞态。
+  - 新增 `Db.replaceAll()`：导入专用，清空 + 重建全程一个事务，用预编译语句（`compileStatement`）
+    批量写，且完全不查存在性（导入本就先清空，表里必然没有这些 id）。
+  - `Backup.importJson()` 改为调用它。顺带**去掉了外层事务里嵌套内层事务**：
+    `deleteCourse()` 自带事务，嵌在外层里一旦失败只回滚内层、外层照常提交，会留下半新半旧的库。
+  - 实测（10 门课 / 400 条笔记 / 100 条待办）：**82.8 ms → 39.2 ms，约 2.1×**。
+- **清理死代码**：删掉 23 个无调用点的方法（`Ui.success/warning/errorContainer/tertiary/color/label/
+  surfaceLow/outlinedCard/roundStrokeRipple/outlinedButton/tonalButton/button/searchBar/chip/lpMargin/
+  divider/gap/vSpace`、`Icons.textButton/tint`、`Dates.shortFromMillis`、`CourseActivity.textAction` ×2），
+  以及未引用的 `res/drawable/ic_stats.xml` 和 `styles.xml` 里的 `TransparentDialog`，
+  外加 10 条失效 import。净减约 124 行，APK 无功能变化。
 
 ### 1.2
 

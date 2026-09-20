@@ -554,11 +554,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         return row;
     }
 
-    private View textAction(int iconRes, String label, final Runnable action) {
-        return textAction(iconRes, label, Ui.primary(this), action);
-    }
-
-    /**
+        /**
      * 等宽操作单元 —— 每个按钮占 1/4 宽，解决"删除被挤出屏幕"问题。
      */
     private View actionCell(int iconRes, String label, int color, final Runnable action) {
@@ -572,16 +568,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         return box;
     }
 
-    private View textAction(int iconRes, String label, int color, final Runnable action) {
-        LinearLayout box = Icons.iconTextButton(this, iconRes, label, 3);
-        Icons.tint(box, color);
-        box.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { action.run(); }
-        });
-        return box;
-    }
-
-    private void confirmDeleteNote(final Db.Note n) {
+        private void confirmDeleteNote(final Db.Note n) {
         Dialogs.confirm(this, "删除笔记", "确定删除「" + nz(n.title) + "」？此操作不可恢复。",
                 "删除", new Runnable() {
                     @Override public void run() {

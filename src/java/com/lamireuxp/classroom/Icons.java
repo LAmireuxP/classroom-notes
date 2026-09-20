@@ -2,10 +2,7 @@ package com.lamireuxp.classroom;
 
 import android.content.Context;
 import android.graphics.PorterDuff;
-import android.graphics.Typeface;
-import android.util.TypedValue;
 import android.view.Gravity;
-import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -150,25 +147,7 @@ public final class Icons {
         return box;
     }
 
-    /** 兼容旧调用。 */
-    public static LinearLayout textButton(Context c, int drawableRes, String text, boolean primary) {
-        return iconTextButton(c, drawableRes, text, primary ? 0 : 1);
-    }
-
-    /** 给按钮内部元素重新着色（图标 + 文字）。 */
-    public static void tint(LinearLayout box, int color) {
-        if (box == null) return;
-        for (int i = 0; i < box.getChildCount(); i++) {
-            View child = box.getChildAt(i);
-            if (child instanceof ImageView) {
-                ((ImageView) child).setColorFilter(color, PorterDuff.Mode.SRC_IN);
-            } else if (child instanceof TextView) {
-                ((TextView) child).setTextColor(color);
-            }
-        }
-    }
-
-    /**
+            /**
      * 卡片内紧凑操作按钮 —— 用于一行放多个操作。
      *
      * 修复横向溢出：图标收窄到 15dp、间距 5dp、内边距 6dp、文字 12.5sp，

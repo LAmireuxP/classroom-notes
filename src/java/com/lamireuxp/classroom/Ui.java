@@ -1,6 +1,7 @@
 package com.lamireuxp.classroom;
 
 import android.animation.ObjectAnimator;
+import android.animation.StateListAnimator;
 import android.animation.PropertyValuesHolder;
 import android.animation.TimeInterpolator;
 import android.animation.ValueAnimator;
@@ -12,7 +13,6 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.util.TypedValue;
 import android.view.Gravity;
-import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.PathInterpolator;
@@ -70,29 +70,34 @@ public final class Ui {
     public static final long DUR_BASE = 250;
     public static final long DUR_SLOW = 400;
 
-    /**
+        /**
      * 按下时轻微缩放。涟漪是「填充」，这个是「形变」，两者叠加才有实感。
      *
-     * 必须 return false：吞掉事件会让 RippleDrawable 收不到触摸，涟漪就没了。
+     * 用 StateListAnimator 而不是 OnTouchListener。
+     * Android 没有 getOnTouchListener()，一旦 setOnTouchListener 占掉这个位置，
+     * 调用方再想挂自己的触摸监听就会把按压动画顶掉；反过来也一样——两个
+     * 想监听触摸的人只能活一个。StateListAnimator 是系统处理「按压形变」的正规
+     * 机制：它挂在 state_pressed 上，完全不碰触摸链路，涟漪和调用方的手势都在。
+     *
      * 缩放属于渲染期变换、不触发重排，放在列表里也安全。
      */
     public static void pressScale(final View v) {
-        v.setOnTouchListener(new View.OnTouchListener() {
-            @Override public boolean onTouch(View view, MotionEvent e) {
-                switch (e.getActionMasked()) {
-                    case MotionEvent.ACTION_DOWN:
-                        view.animate().scaleX(0.97f).scaleY(0.97f)
-                                .setDuration(DUR_FAST).setInterpolator(EASE_STANDARD).start();
-                        break;
-                    case MotionEvent.ACTION_UP:
-                    case MotionEvent.ACTION_CANCEL:
-                        view.animate().scaleX(1f).scaleY(1f)
-                                .setDuration(DUR_FAST).setInterpolator(EASE_STANDARD).start();
-                        break;
-                }
-                return false;
-            }
-        });
+        ObjectAnimator down = ObjectAnimator.ofPropertyValuesHolder(v,
+                PropertyValuesHolder.ofFloat("scaleX", 0.97f),
+                PropertyValuesHolder.ofFloat("scaleY", 0.97f));
+        down.setDuration(DUR_FAST);
+        down.setInterpolator(EASE_STANDARD);
+
+        ObjectAnimator up = ObjectAnimator.ofPropertyValuesHolder(v,
+                PropertyValuesHolder.ofFloat("scaleX", 1f),
+                PropertyValuesHolder.ofFloat("scaleY", 1f));
+        up.setDuration(DUR_FAST);
+        up.setInterpolator(EASE_STANDARD);
+
+        StateListAnimator sla = new StateListAnimator();
+        sla.addState(new int[]{android.R.attr.state_pressed}, down);
+        sla.addState(new int[]{}, up);
+        v.setStateListAnimator(sla);
     }
 
     // ================= 窗口层主题 =================
@@ -172,22 +177,7 @@ public final class Ui {
         }
     }
 
-    /** 兼容旧 API：按颜色资源 ID 取色（自动做 light/dark 映射）。 */
-    public static int color(Context c, int res) {
-        if (res == 0) return isDark(c) ? Color.WHITE : Color.BLACK;
-        try {
-            String name = c.getResources().getResourceEntryName(res);
-            if (name != null && (name.startsWith("light_") || name.startsWith("dark_"))) {
-                String semantic = name.substring(name.indexOf('_') + 1);
-                return tone(c, semantic);
-            }
-            return c.getResources().getColor(res);
-        } catch (Throwable e) {
-            return isDark(c) ? Color.WHITE : Color.BLACK;
-        }
-    }
-
-    // ---- 语义色快捷方法 ----
+        // ---- 语义色快捷方法 ----
 
     public static int primary(Context c) { return tone(c, "primary"); }
     public static int onPrimary(Context c) { return tone(c, "on_primary"); }
@@ -195,8 +185,7 @@ public final class Ui {
     public static int onPrimaryContainer(Context c) { return tone(c, "on_primary_container"); }
     public static int secondaryContainer(Context c) { return tone(c, "secondary_container"); }
     public static int surface(Context c) { return tone(c, "surface"); }
-    public static int surfaceLow(Context c) { return tone(c, "surface_container_low"); }
-    public static int surfaceLowest(Context c) { return tone(c, "surface_container_lowest"); }
+        public static int surfaceLowest(Context c) { return tone(c, "surface_container_lowest"); }
     public static int surfaceContainer(Context c) { return tone(c, "surface_container"); }
     public static int surfaceHigh(Context c) { return tone(c, "surface_container_high"); }
     public static int surfaceHighest(Context c) { return tone(c, "surface_container_highest"); }
@@ -214,10 +203,8 @@ public final class Ui {
         return isDark(c) ? tone(c, "hairline") : outlineVariant(c);
     }
     public static int error(Context c) { return tone(c, "error"); }
-    public static int errorContainer(Context c) { return tone(c, "error_container"); }
-    public static int onErrorContainer(Context c) { return tone(c, "on_error_container"); }
-    public static int tertiary(Context c) { return tone(c, "tertiary"); }
-    public static int inverseSurface(Context c) { return tone(c, "inverse_surface"); }
+        public static int onErrorContainer(Context c) { return tone(c, "on_error_container"); }
+        public static int inverseSurface(Context c) { return tone(c, "inverse_surface"); }
     public static int inverseOnSurface(Context c) { return tone(c, "inverse_on_surface"); }
 
     // ================= 形状 / 背景 =================
@@ -275,17 +262,7 @@ public final class Ui {
         return new RippleDrawable(ColorStateList.valueOf(pr), base, mask);
     }
 
-    /** 成功色（绿）—— MD3 未定义，按规范用 tertiary 系扩展。 */
-    public static int success(Context c) {
-        return isDark(c) ? 0xFF6DD58C : 0xFF0F9D58;
-    }
-
-    /** 警告色（橙）。 */
-    public static int warning(Context c) {
-        return isDark(c) ? 0xFFFFB77C : 0xFFB26A00;
-    }
-
-    /** 取任意十六进制色（用于课程自定义色）。 */
+            /** 取任意十六进制色（用于课程自定义色）。 */
     public static int parseColor(String hex, int fallback) {
         try {
             return Color.parseColor(hex);
@@ -320,12 +297,7 @@ public final class Ui {
         return tv;
     }
 
-    /** 兼容旧签名：按语义色资源 ID 取名（R.color.xxx 已废弃，这里允许传语义色 int）。 */
-    public static TextView label(Context c, String s, float sizeSp, int colorRes, boolean bold) {
-        return text(c, s, sizeSp, color(c, colorRes), bold);
-    }
-
-    // ================= 容器 =================
+        // ================= 容器 =================
 
     /**
      * MD3 Card（filled 风格）：surfaceContainer 底 + large 圆角 + 极细描边。
@@ -343,20 +315,7 @@ public final class Ui {
         return ll;
     }
 
-    /** MD3 Outlined Card：透明底 + 描边。 */
-    public static LinearLayout outlinedCard(Context c) {
-        LinearLayout ll = column(c);
-        ll.setBackground(round(c, surfaceLow(c), hairline(c), R_L, 1f));
-        int p = dp(c, 16);
-        ll.setPadding(p, p, p, p);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = dp(c, 12);
-        ll.setLayoutParams(lp);
-        return ll;
-    }
-
-    public static LinearLayout column(Context c) {
+        public static LinearLayout column(Context c) {
         LinearLayout ll = new LinearLayout(c);
         ll.setOrientation(LinearLayout.VERTICAL);
         return ll;
@@ -383,23 +342,7 @@ public final class Ui {
         return tv;
     }
 
-    /** Tonal Button —— 中等强调（secondaryContainer） */
-    public static TextView tonalButton(Context c, String text) {
-        TextView tv = baseButton(c, text);
-        tv.setTextColor(tone(c, "on_secondary_container"));
-        tv.setBackground(ripple(c, secondaryContainer(c), R_S));
-        return tv;
-    }
-
-    /** Outlined Button —— 低强调 */
-    public static TextView outlinedButton(Context c, String text) {
-        TextView tv = baseButton(c, text);
-        tv.setTextColor(primary(c));
-        tv.setBackground(roundStrokeRipple(c, primary(c)));
-        return tv;
-    }
-
-    /** Text Button —— 最低强调 */
+            /** Text Button —— 最低强调 */
     public static TextView textButton(Context c, String text) {
         TextView tv = baseButton(c, text);
         tv.setTextColor(primary(c));
@@ -407,14 +350,7 @@ public final class Ui {
         return tv;
     }
 
-    private static RippleDrawable roundStrokeRipple(Context c, int strokeColor) {
-        GradientDrawable base = round(c, Color.TRANSPARENT, strokeColor, R_S, 1f);
-        GradientDrawable mask = round(c, Color.WHITE, Color.TRANSPARENT, R_S, 0);
-        int pr = isDark(c) ? 0x33FFFFFF : 0x1A000000;
-        return new RippleDrawable(ColorStateList.valueOf(pr), base, mask);
-    }
-
-    private static TextView baseButton(Context c, String text) {
+        private static TextView baseButton(Context c, String text) {
         TextView tv = text(c, text, T_BODY, onSurface(c), true);
         tv.setGravity(Gravity.CENTER);
         int padH = dp(c, 24), padV = dp(c, 10);
@@ -426,12 +362,7 @@ public final class Ui {
         return tv;
     }
 
-    /** 兼容旧调用：button(c, text, primary) */
-    public static TextView button(Context c, String text, boolean primary) {
-        return primary ? filledButton(c, text) : tonalButton(c, text);
-    }
-
-    // ================= 输入框 =================
+        // ================= 输入框 =================
 
     /** MD3 Outlined TextField */
     public static EditText input(Context c, String hint) {
@@ -451,26 +382,7 @@ public final class Ui {
         return et;
     }
 
-    /** MD3 SearchBar 风格输入框（药丸形） */
-    public static EditText searchBar(Context c, String hint) {
-        EditText et = new EditText(c);
-        et.setHint(hint);
-        et.setTextSize(T_BODY + 1);
-        et.setTextColor(onSurface(c));
-        et.setHintTextColor(onSurfaceVariant(c));
-        et.setSingleLine(true);
-        et.setBackground(round(c, surfaceContainer(c), outlineVariant(c), R_FULL, 0.8f));
-        int p = dp(c, 20);
-        et.setPadding(p, dp(c, 12), p, dp(c, 12));
-        et.setMinHeight(dp(c, 46));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = dp(c, 14);
-        et.setLayoutParams(lp);
-        return et;
-    }
-
-    /** MD3 SearchBar 风格输入框（药丸形，带前导搜索图标）。 */
+        /** MD3 SearchBar 风格输入框（药丸形，带前导搜索图标）。 */
     public static LinearLayout searchBarWithIcon(Context c, String hint, int iconRes) {
         LinearLayout box = row(c);
         box.setBackground(round(c, surfaceContainer(c), outlineVariant(c), R_FULL, 0.8f));
@@ -515,17 +427,7 @@ public final class Ui {
 
     // ================= 芯片 Chip =================
 
-    /** MD3 Assist Chip */
-    public static TextView chip(Context c, String text) {
-        TextView tv = text(c, text, T_LABEL + 0.5f, onSurfaceVariant(c), false);
-        tv.setGravity(Gravity.CENTER);
-        int padH = dp(c, 12), padV = dp(c, 6);
-        tv.setPadding(padH, padV, padH, padV);
-        tv.setBackground(round(c, Color.TRANSPARENT, outline(c), R_S, 1f));
-        return tv;
-    }
-
-    /** 带容器色的 Chip */
+        /** 带容器色的 Chip */
     public static TextView tonalChip(Context c, String text, int containerColor, int onColor) {
         TextView tv = text(c, text, T_LABEL + 0.5f, onColor, true);
         tv.setGravity(Gravity.CENTER);
@@ -547,44 +449,13 @@ public final class Ui {
         return p;
     }
 
-    public static LinearLayout.LayoutParams lpMargin(int w, int h, int top, int bottom) {
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(w, h);
-        p.topMargin = top;
-        p.bottomMargin = bottom;
-        return p;
-    }
+        // ================= 分隔 / 间距 =================
 
-    // ================= 分隔 / 间距 =================
-
-    public static View divider(Context c) {
-        View v = new View(c);
-        v.setBackgroundColor(outlineVariant(c));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(c, 0.8f)));
-        lp.topMargin = dp(c, 8);
-        lp.bottomMargin = dp(c, 8);
-        v.setLayoutParams(lp);
-        return v;
-    }
-
-    /** 弹性占位（把后续元素推到行尾）。 */
+        /** 弹性占位（把后续元素推到行尾）。 */
     public static View spacer(Context c) {
         View v = new View(c);
         v.setLayoutParams(lpW(0, 1, 1f));
         return v;
     }
 
-    /** 固定尺寸占位。 */
-    public static View gap(Context c, int wDp, int hDp) {
-        View v = new View(c);
-        v.setLayoutParams(lp(dp(c, wDp), dp(c, hDp)));
-        return v;
-    }
-
-    /** 纵向留白。 */
-    public static View vSpace(Context c, int dpVal) {
-        View v = new View(c);
-        v.setLayoutParams(lp(ViewGroup.LayoutParams.MATCH_PARENT, dp(c, dpVal)));
-        return v;
-    }
-}
+        }

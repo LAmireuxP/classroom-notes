@@ -26,11 +26,4 @@
         <item name="android:windowLightStatusBar">false</item>
     </style>
 
-    <!-- 透明对话框（MD3 Dialog / Bottom Sheet 用） -->
-    <style name="TransparentDialog" parent="@android:style/Theme.Material.Light.Dialog.Alert">
-        <item name="android:windowBackground">@android:color/transparent</item>
-        <item name="android:windowIsFloating">true</item>
-        <item name="android:windowNoTitle">true</item>
-        <item name="android:backgroundDimEnabled">true</item>
-    </style>
 </resources>

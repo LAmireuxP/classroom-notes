@@ -21,14 +21,7 @@ public final class Dates {
         return p[1] + "/" + p[2];
     }
 
-    /** 把毫秒时间戳格式化为 09/18。 */
-    public static String shortFromMillis(long ms) {
-        Calendar c = Calendar.getInstance();
-        c.setTimeInMillis(ms);
-        return String.format("%02d/%02d", c.get(Calendar.MONTH) + 1, c.get(Calendar.DAY_OF_MONTH));
-    }
-
-    public static String clock(long ms) {
+        public static String clock(long ms) {
         long total = ms / 1000;
         long m = total / 60;
         long s = total % 60;

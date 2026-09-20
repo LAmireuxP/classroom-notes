@@ -1,6 +1,5 @@
 package com.lamireuxp.classroom;
 
-import android.view.View;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 

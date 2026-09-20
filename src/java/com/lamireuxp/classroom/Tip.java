@@ -1,7 +1,6 @@
 package com.lamireuxp.classroom;
 
 import android.app.Activity;
-import android.content.Context;
 import android.graphics.Color;
 import android.view.Gravity;
 import android.view.View;
