@@ -6,7 +6,6 @@ import android.graphics.Color;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.view.animation.DecelerateInterpolator;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -81,7 +80,7 @@ public final class Tip {
         bar.setTranslationY(Ui.dp(a, 24));
         root.addView(bar);
         bar.animate().alpha(1f).translationY(0f)
-                .setDuration(200).setInterpolator(new DecelerateInterpolator()).start();
+                .setDuration(Ui.DUR_BASE).setInterpolator(Ui.EASE_STANDARD).start();
 
         bar.postDelayed(new Runnable() {
             @Override public void run() { dismiss(root, bar); }
@@ -91,7 +90,7 @@ public final class Tip {
     private static void dismiss(final ViewGroup root, final View bar) {
         if (bar.getParent() == null) return;
         bar.animate().alpha(0f).translationY(Ui.dp(bar.getContext(), 16))
-                .setDuration(180).withEndAction(new Runnable() {
+                .setDuration(Ui.DUR_FAST).withEndAction(new Runnable() {
                     @Override public void run() {
                         try {
                             root.removeView(bar);

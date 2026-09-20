@@ -56,10 +56,22 @@ public final class Dialogs {
         w.setAttributes(lp);
         w.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
-        // 底部抽屉进入动画
+        // 底部抽屉进入动画。
+        // 原来是固定 translationY 40dp——对高抽屉来说这点位移几乎看不出来，
+        // 抽屉像是「凭空出现」。改成从屏幕高度滑入，并统一用 Ui.EASE_STANDARD。
+        // 先设一个确定在屏幕外的初值，避免 post 到实际高度时闪一帧。
         if (bottom && w.getDecorView() != null) {
-            w.getDecorView().setTranslationY(Ui.dp(dlg.getContext(), 40));
-            w.getDecorView().animate().translationY(0).setDuration(220).start();
+            final View decor = w.getDecorView();
+            int screenH = dlg.getContext().getResources().getDisplayMetrics().heightPixels;
+            decor.setTranslationY(screenH);
+            decor.post(new Runnable() {
+                @Override public void run() {
+                    decor.animate().translationY(0)
+                            .setDuration(Ui.DUR_BASE)
+                            .setInterpolator(Ui.EASE_STANDARD)
+                            .start();
+                }
+            });
         }
     }
 

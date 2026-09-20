@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.os.Build;
@@ -43,6 +44,8 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     private LinearLayout content;
     private LinearLayout tabBar;
     private LinearLayout recPanel;
+    /** 页面根容器。加载条挂在这里而不是 content 上——content 会被 renderContent() 反复清空重建。 */
+    private LinearLayout pageRoot;
 
     private String tab = "notes";
     private String query = "";
@@ -54,16 +57,43 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     private Runnable tickTask;
     private TextView recTimerView;
     private TextView recTextView;
+    /** 联网期间的常驻加载条（AI 总结 / 云转写）。 */
+    private Loading.Handle loading;
+    /** 录音脉冲的动画句柄。常驻循环动画，视图被移除时必须 cancel。 */
+    private final java.util.List<android.animation.ObjectAnimator> recPulses =
+            new java.util.ArrayList<android.animation.ObjectAnimator>();
+
+    private void cancelRecPulses() {
+        for (android.animation.ObjectAnimator a : recPulses) {
+            try { a.cancel(); } catch (Throwable ignored) {}
+        }
+        recPulses.clear();
+    }
 
     @Override
     protected void onCreate(Bundle b) {
-        setTheme(Prefs.dark(this) ? R.style.AppTheme_Dark : R.style.AppTheme);
+        // 必须在 super.onCreate 之前：应用主题资源
+        setTheme(Prefs.isDark(this) ? R.style.AppTheme_Dark : R.style.AppTheme);
         super.onCreate(b);
         db = Db.get(this);
         courseId = getIntent().getStringExtra("courseId");
         course = db.course(courseId);
         if (course == null) { finish(); return; }
+        applyWindowTheme();
         buildUi();
+    }
+
+    /** 窗口层（状态栏 / 导航栏 / 图标明暗）。 */
+    private void applyWindowTheme() {
+        Ui.applyWindowTheme(this);
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration nc) {
+        super.onConfigurationChanged(nc);
+        // uiMode 在 manifest 的 configChanges 里声明过，系统切深浅色时不会自动重建。
+        // 跟随系统模式下必须自己重建；正在录音时先不动，免得把录音会话弄丢。
+        if (Prefs.THEME_SYSTEM.equals(Prefs.themeMode(this)) && !isRecording()) recreate();
     }
 
     @Override
@@ -77,6 +107,35 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         super.onDestroy();
         if (speech != null) speech.cancel();
         stopTicker();
+        hideLoading();
+        cancelRecPulses();
+    }
+
+    /**
+     * 显示常驻加载条。
+     *
+     * 原来是 Tip.show(...)——Tip 到点自动消失，之后 AI 那 120 秒（转写 180 秒）
+     * 的超时窗口里界面完全静止，用户不知道是在跑还是卡死。
+     * 注意必须在每次 renderContent() 之前 hideLoading()，否则视图被移除后
+     * 无限动画还在跑。
+     */
+    private void showLoading(String text) {
+        hideLoading();
+        if (pageRoot == null) return;
+        loading = Loading.show(this, text);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        int m = Ui.dp(this, 16);
+        lp.setMargins(m, 0, m, Ui.dp(this, 16));
+        loading.view.setLayoutParams(lp);
+        pageRoot.addView(loading.view);
+    }
+
+    private void hideLoading() {
+        if (loading != null) {
+            loading.stop();
+            loading = null;
+        }
     }
 
     @Override
@@ -109,6 +168,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         LinearLayout page = Ui.column(this);
         page.setBackgroundColor(Ui.surface(this));
         setContentView(page);
+        pageRoot = page;
 
         // 顶栏 + 状态栏内边距
         View tb = topBar();
@@ -239,6 +299,14 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     private View segment(String label, final String key, int count) {
         boolean active = tab.equals(key);
 
+        // Cal.com 的 nav-pill-group：外层是浅色分段容器，选中段是「容器里的一枚
+        // 更亮的小 pill」，而不是整块主色实底。原来选中段直接铺 primary，
+        // 是整个 App 里 primary 被滥用最明显的一处。
+        // 亮/暗方向相反：浅色主题下「更亮」= surface_container_lowest（白），
+        // 深色主题下「更亮」= surface_container_highest。这也是 MD3 用 surface
+        // 分级表达海拔的用法。
+        final int activeBg = Ui.isDark(this) ? Ui.surfaceHighest(this) : Ui.surfaceLowest(this);
+
         LinearLayout seg = Ui.row(this);
         seg.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -249,14 +317,16 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         seg.setMinimumHeight(Ui.dp(this, 44));
 
         if (active) {
-            seg.setBackground(Ui.ripple(this, Ui.primary(this), Ui.R_FULL));
+            seg.setBackground(Ui.ripple(this, activeBg, Ui.R_FULL));
+            Ui.elevation(seg, 1f);          // 容器内的一点点浮起
         } else {
             seg.setBackground(Ui.ripple(this, Color.TRANSPARENT, Ui.R_FULL));
         }
         seg.setClickable(true);
+        Ui.pressScale(seg);
 
         TextView tv = Ui.text(this, label + "  " + count, Ui.T_BODY,
-                active ? Ui.onPrimary(this) : Ui.onSurfaceVariant(this), active);
+                active ? Ui.onSurface(this) : Ui.onSurfaceVariant(this), active);
         seg.addView(tv);
 
         seg.setOnClickListener(new View.OnClickListener() {
@@ -287,6 +357,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     private void renderContent() {
         content.removeAllViews();
         recPanel = null;
+        cancelRecPulses();
         if ("notes".equals(tab)) renderNotes();
         else renderTodos();
     }
@@ -294,11 +365,13 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     // ================== 笔记 ==================
 
     private void renderNotes() {
-        // 操作行：录音（tonal）+ 新建（filled）
+        // 操作行：录音（neutral）+ 新建（filled）
+        // 录音原来是 tonal（紫底），和 filled 的「新建笔记」并排就成了两个紫按钮抢焦点。
+        // 一行里只留一个有色按钮，"录音" 降为中性但保留存在感。
         LinearLayout actions = Ui.row(this);
         actions.setLayoutParams(new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 40)));
-        LinearLayout recBtn = Icons.iconTextButton(this, R.drawable.ic_mic, "录音", 1);
+        LinearLayout recBtn = Icons.iconTextButton(this, R.drawable.ic_mic, "录音", 4);
         recBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { startRecordingFlow(); }
         });
@@ -387,13 +460,26 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         TextView date = Ui.text(this, Dates.shortDate(n.date), Ui.T_LABEL,
                 Ui.onSurfaceVariant(this), false);
         head.addView(date);
+
+        // 展开指示箭头。原来完全没有这个标识，折叠态和展开态的头行长得一模一样，
+        // 用户不知道这条笔记能点开。
+        ImageView chevron = Icons.icon(this, R.drawable.ic_chevron_down,
+                Ui.onSurfaceVariant(this), 18);
+        LinearLayout.LayoutParams chlp = new LinearLayout.LayoutParams(
+                Ui.dp(this, 18), Ui.dp(this, 18));
+        chlp.leftMargin = Ui.dp(this, 6);
+        chevron.setLayoutParams(chlp);
+        chevron.setRotation(expanded ? 180f : 0f);
+        head.addView(chevron);
         row.addView(head);
 
         // ---- 正文预览 / 全文 ----
         String text = nz(n.content);
         TextView bodyTv = Ui.text(this, expanded ? text : preview(text), Ui.T_BODY,
                 Ui.onSurfaceVariant(this), false);
-        bodyTv.setLineSpacing(Ui.dp(this, 3), 1f);
+        // 行高 14sp + 5dp ≈ 1.57，对齐 Notion body-md 的 1.55。
+        // 原来是 3dp（≈1.43），中文长段落读起来偏挤。
+        bodyTv.setLineSpacing(Ui.dp(this, 5), 1f);
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         bp.topMargin = Ui.dp(this, 6);
@@ -830,10 +916,31 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         LinearLayout statusRow = Ui.row(this);
         statusRow.setGravity(Gravity.CENTER);
 
-        View dot = new View(this);
-        dot.setBackground(Ui.circle(Ui.error(this), Ui.dp(this, 10)));
-        dot.setLayoutParams(Ui.lp(Ui.dp(this, 10), Ui.dp(this, 10)));
-        statusRow.addView(dot);
+        // 录音指示：三圈相位错开的扩散脉冲，而不是一个静止红点。
+        // 静态圆点看不出「正在进行」，脉冲才把状态说明白。
+        // 用 scale + alpha（渲染期变换），不触发重排，所以不会跟每秒的计时刷新打架。
+        int ring = Ui.dp(this, 18);
+        android.widget.FrameLayout dotBox = new android.widget.FrameLayout(this);
+        dotBox.setLayoutParams(Ui.lp(ring, ring));
+        dotBox.setClipChildren(false);   // 扩散时脉冲会超出自身范围，别裁掉
+        statusRow.setClipChildren(false);
+
+        for (int i = 0; i < 3; i++) {
+            View r = new View(this);
+            r.setBackground(Ui.circle(Ui.error(this), ring));
+            r.setLayoutParams(new android.widget.FrameLayout.LayoutParams(ring, ring));
+            dotBox.addView(r);
+            recPulses.add(Ui.pulse(r, i * 400L));
+        }
+
+        View core = new View(this);
+        core.setBackground(Ui.circle(Ui.error(this), Ui.dp(this, 10)));
+        android.widget.FrameLayout.LayoutParams clp =
+                new android.widget.FrameLayout.LayoutParams(Ui.dp(this, 10), Ui.dp(this, 10));
+        clp.gravity = Gravity.CENTER;
+        core.setLayoutParams(clp);
+        dotBox.addView(core);
+        statusRow.addView(dotBox);
 
         TextView label = Ui.text(this, "  正在录音", Ui.T_TITLE, Ui.onSurface(this), true);
         statusRow.addView(label);
@@ -931,13 +1038,14 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
             Tip.error(this, "未识别到文字，且未配置转写服务");
             return;
         }
-        Tip.show(this, "正在上传录音并转写…");
+        showLoading("正在上传录音并转写…");
         new Thread(new Runnable() {
             @Override public void run() {
                 try {
                     final String text = Net.transcribe(ep, key, model, audio, "recording.m4a");
                     runOnUiThread(new Runnable() {
                         @Override public void run() {
+                            hideLoading();
                             openRecordedNote(text);
                             renderTabs();
                             renderContent();
@@ -946,6 +1054,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                 } catch (final Exception e) {
                     runOnUiThread(new Runnable() {
                         @Override public void run() {
+                            hideLoading();
                             Tip.error(CourseActivity.this,
                                     "转写失败：" + (e.getMessage() == null ? "网络错误" : e.getMessage()));
                         }
@@ -966,7 +1075,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
             Tip.error(this, "请先在「设置 → AI 总结」配置 API Key");
             return;
         }
-        Tip.show(this, "正在请求 AI 总结…");
+        showLoading("正在请求 AI 总结…");
         final String endpoint = Prefs.aiEndpoint(this);
         final String key = Prefs.aiKey(this);
         final String model = Prefs.aiModel(this);
@@ -975,11 +1084,15 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                 try {
                     final Net.AiResult r = Net.summarize(endpoint, key, model, n.title, n.content);
                     runOnUiThread(new Runnable() {
-                        @Override public void run() { showAiResult(n, r); }
+                        @Override public void run() {
+                            hideLoading();
+                            showAiResult(n, r);
+                        }
                     });
                 } catch (final Exception e) {
                     runOnUiThread(new Runnable() {
                         @Override public void run() {
+                            hideLoading();
                             Tip.error(CourseActivity.this,
                                     "AI 总结失败：" + (e.getMessage() == null ? "未知错误" : e.getMessage()));
                         }

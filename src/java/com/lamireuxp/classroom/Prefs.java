@@ -2,6 +2,7 @@ package com.lamireuxp.classroom;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.res.Configuration;
 
 /** 设置存储：主题、AI（OpenAI 兼容）、语音转写。 */
 public class Prefs {
@@ -13,10 +14,40 @@ public class Prefs {
     }
 
     // ---------- 主题 ----------
-    public static boolean dark(Context c) { return sp(c).getBoolean("dark", false); }
-    public static void setDark(Context c, boolean v) {
-        sp(c).edit().putBoolean("dark", v).apply();
+    // mode: system | light | dark
+    public static final String THEME_SYSTEM = "system";
+    public static final String THEME_LIGHT = "light";
+    public static final String THEME_DARK = "dark";
+
+    public static String themeMode(Context c) {
+        SharedPreferences p = sp(c);
+        String m = p.getString("theme_mode", null);
+        if (m != null) return m;
+        // 迁移旧版本：老版本只有一个 dark 布尔（默认 false）。
+        // 用 contains 区分「从没设过」和「显式设成浅色」——
+        // 从没设过就跟随系统，别把人锁死在浅色上。
+        if (p.contains("dark")) {
+            return p.getBoolean("dark", false) ? THEME_DARK : THEME_LIGHT;
+        }
+        return THEME_SYSTEM;
     }
+
+    public static void setThemeMode(Context c, String mode) {
+        sp(c).edit().putString("theme_mode", mode).apply();
+    }
+
+    /** 当前实际是否深色。system 模式下去读系统配置，而不是固定值。 */
+    public static boolean isDark(Context c) {
+        String m = themeMode(c);
+        if (THEME_DARK.equals(m)) return true;
+        if (THEME_LIGHT.equals(m)) return false;
+        int night = c.getResources().getConfiguration().uiMode
+                & Configuration.UI_MODE_NIGHT_MASK;
+        return night == Configuration.UI_MODE_NIGHT_YES;
+    }
+
+    /** 兼容旧调用点：语义等同 isDark（会解析 system 模式）。 */
+    public static boolean dark(Context c) { return isDark(c); }
 
     // ---------- AI（课堂总结） ----------
     public static String aiEndpoint(Context c) {

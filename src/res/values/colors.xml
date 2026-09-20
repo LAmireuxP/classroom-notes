@@ -61,6 +61,13 @@
     <color name="dark_surface_container_highest">#353539</color>
     <color name="dark_outline">#90909A</color>
     <color name="dark_outline_variant">#45464F</color>
+    <!--
+      深色卡片专用的描边。原色 dark_outline_variant #45464F 比它所处的
+      dark_surface_container #1F1F23 亮了 +38，看起来像个「灰框」而不是
+      「轻微分离」；Linear 的 hairline 相对其 surface 只高约 +20。
+      outline_variant 保留给输入框等需要明确边界的地方。
+    -->
+    <color name="dark_hairline">#2E2F35</color>
     <color name="dark_inverse_surface">#E4E1E6</color>
     <color name="dark_inverse_on_surface">#303034</color>
 

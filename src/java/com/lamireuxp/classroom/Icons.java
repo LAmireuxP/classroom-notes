@@ -82,7 +82,7 @@ public final class Icons {
      *  3. 不使用 includeFontPadding=false（那会破坏基线），改用统一 lineHeight
      *  4. 图标 18dp / 文字 14sp，视觉重量匹配
      *
-     * style: 0=filled, 1=tonal, 2=outlined, 3=text
+     * style: 0=filled, 1=tonal, 2=outlined, 3=text, 4=neutral
      */
     public static LinearLayout iconTextButton(Context c, int drawableRes, String text, int style) {
         LinearLayout box = new LinearLayout(c);
@@ -102,24 +102,29 @@ public final class Icons {
         switch (style) {
             case 0: // filled
                 fg = Ui.onPrimary(c);
-                box.setBackground(Ui.ripple(c, Ui.primary(c), Ui.R_FULL));
+                box.setBackground(Ui.ripple(c, Ui.primary(c), Ui.R_S));
                 break;
             case 1: // tonal
                 fg = Ui.tone(c, "on_secondary_container");
-                box.setBackground(Ui.ripple(c, Ui.secondaryContainer(c), Ui.R_FULL));
+                box.setBackground(Ui.ripple(c, Ui.secondaryContainer(c), Ui.R_S));
                 break;
             case 2: // outlined
                 fg = Ui.primary(c);
                 box.setBackground(Ui.outlinedRipple(c));
                 break;
+            case 4: // neutral —— 有存在感但不抢焦点，给「同一行里还有主按钮」的次级动作用
+                fg = Ui.onSurface(c);
+                box.setBackground(Ui.ripple(c, Ui.surfaceHigh(c), Ui.R_S));
+                break;
             default: // text
                 fg = Ui.primary(c);
-                box.setBackground(Ui.ripple(c, 0x00000000, Ui.R_FULL));
+                box.setBackground(Ui.ripple(c, 0x00000000, Ui.R_S));
                 break;
         }
         box.setClickable(true);
         box.setFocusable(true);
         box.setContentDescription(text);
+        Ui.pressScale(box);
 
         if (drawableRes != 0) {
             ImageView iv = icon(c, drawableRes, fg, BTN_ICON);

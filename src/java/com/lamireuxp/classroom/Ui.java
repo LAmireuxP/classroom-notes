@@ -1,5 +1,9 @@
 package com.lamireuxp.classroom;
 
+import android.animation.ObjectAnimator;
+import android.animation.PropertyValuesHolder;
+import android.animation.TimeInterpolator;
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -8,8 +12,10 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.animation.PathInterpolator;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -42,6 +48,107 @@ public final class Ui {
     public static final float R_L = 16;
     public static final float R_XL = 28;
     public static final float R_FULL = 999;
+
+    // ================= 动效 =================
+
+    /**
+     * 缓动词汇表。
+     *
+     * 之前 Tip 和 ThemeSwitch 各自 new 一个 DecelerateInterpolator —— 同一个 App 里
+     * 出现两种状态变化曲线，是「缺少设计系统」的典型症状。这里统一收口。
+     *
+     * 数值取自 uiverse-io/galaxy 里跨文件最一致的几条 cubic-bezier；Android 的
+     * PathInterpolator 就是同一条三次贝塞尔，可以逐位照抄。
+     */
+    public static final TimeInterpolator EASE_STANDARD =
+            new PathInterpolator(0.23f, 1f, 0.32f, 1f);          // 通用状态变化
+    public static final TimeInterpolator EASE_BACK =
+            new PathInterpolator(0.68f, -0.55f, 0.27f, 1.55f);   // 带回弹：弹层、开关
+
+    /** 时长三档：状态 / 变换 / 进入。 */
+    public static final long DUR_FAST = 150;
+    public static final long DUR_BASE = 250;
+    public static final long DUR_SLOW = 400;
+
+    /**
+     * 按下时轻微缩放。涟漪是「填充」，这个是「形变」，两者叠加才有实感。
+     *
+     * 必须 return false：吞掉事件会让 RippleDrawable 收不到触摸，涟漪就没了。
+     * 缩放属于渲染期变换、不触发重排，放在列表里也安全。
+     */
+    public static void pressScale(final View v) {
+        v.setOnTouchListener(new View.OnTouchListener() {
+            @Override public boolean onTouch(View view, MotionEvent e) {
+                switch (e.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        view.animate().scaleX(0.97f).scaleY(0.97f)
+                                .setDuration(DUR_FAST).setInterpolator(EASE_STANDARD).start();
+                        break;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        view.animate().scaleX(1f).scaleY(1f)
+                                .setDuration(DUR_FAST).setInterpolator(EASE_STANDARD).start();
+                        break;
+                }
+                return false;
+            }
+        });
+    }
+
+    // ================= 窗口层主题 =================
+
+    /**
+     * 同步窗口层主题：状态栏 / 导航栏底色 + 图标明暗。
+     *
+     * 主题资源（R.style.AppTheme[_Dark]）只在 setTheme() 那一刻生效，
+     * 之后再改主题就得自己同步这几项，否则会出现「界面已经变深色、
+     * 状态栏图标还是黑的」这种不一致。
+     */
+    public static void applyWindowTheme(android.app.Activity a) {
+        boolean dark = isDark(a);
+        a.getWindow().setStatusBarColor(surface(a));
+        a.getWindow().setNavigationBarColor(surface(a));
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            View decor = a.getWindow().getDecorView();
+            int flags = decor.getSystemUiVisibility();
+            if (dark) flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            else flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            decor.setSystemUiVisibility(flags);
+        }
+    }
+
+    /** 状态栏高度（px）。edge-to-edge 下给顶栏加内边距用。 */
+    public static int statusBarHeight(Context c) {
+        int id = c.getResources().getIdentifier("status_bar_height", "dimen", "android");
+        if (id > 0) {
+            int h = c.getResources().getDimensionPixelSize(id);
+            if (h > 0) return h;
+        }
+        return dp(c, 24);
+    }
+
+    /**
+     * 循环扩散脉冲：scale + alpha，只走渲染期变换、不改 layout，所以不会重排。
+     * 多圈给不同 startDelay 就是相位错开的扩散波。
+     *
+     * 这是**常驻循环**动画——只用在明确的「进行中」状态上，并且视图被移除时
+     * 调用方必须 cancel，否则动画会一直跑下去（漏内存 + 白耗帧）。
+     */
+    public static ObjectAnimator pulse(View v, long startDelayMs) {
+        v.setScaleX(0.4f);
+        v.setScaleY(0.4f);
+        v.setAlpha(0.7f);
+        ObjectAnimator a = ObjectAnimator.ofPropertyValuesHolder(v,
+                PropertyValuesHolder.ofFloat("scaleX", 0.4f, 2.2f),
+                PropertyValuesHolder.ofFloat("scaleY", 0.4f, 2.2f),
+                PropertyValuesHolder.ofFloat("alpha", 0.7f, 0f));
+        a.setDuration(1200);
+        a.setStartDelay(startDelayMs);
+        a.setRepeatCount(ValueAnimator.INFINITE);
+        a.setInterpolator(new android.view.animation.LinearInterpolator());
+        a.start();
+        return a;
+    }
 
     // ================= 主题色解析 =================
 
@@ -89,6 +196,7 @@ public final class Ui {
     public static int secondaryContainer(Context c) { return tone(c, "secondary_container"); }
     public static int surface(Context c) { return tone(c, "surface"); }
     public static int surfaceLow(Context c) { return tone(c, "surface_container_low"); }
+    public static int surfaceLowest(Context c) { return tone(c, "surface_container_lowest"); }
     public static int surfaceContainer(Context c) { return tone(c, "surface_container"); }
     public static int surfaceHigh(Context c) { return tone(c, "surface_container_high"); }
     public static int surfaceHighest(Context c) { return tone(c, "surface_container_highest"); }
@@ -96,6 +204,15 @@ public final class Ui {
     public static int onSurfaceVariant(Context c) { return tone(c, "on_surface_variant"); }
     public static int outline(Context c) { return tone(c, "outline"); }
     public static int outlineVariant(Context c) { return tone(c, "outline_variant"); }
+
+    /**
+     * 卡片描边。
+     * 深色下用更暗的一档（dark_hairline），否则 #45464F 相对 surface 亮太多，
+     * 卡片看起来像被「灰框」框住。浅色下沿用 outline_variant。
+     */
+    public static int hairline(Context c) {
+        return isDark(c) ? tone(c, "hairline") : outlineVariant(c);
+    }
     public static int error(Context c) { return tone(c, "error"); }
     public static int errorContainer(Context c) { return tone(c, "error_container"); }
     public static int onErrorContainer(Context c) { return tone(c, "on_error_container"); }
@@ -152,8 +269,8 @@ public final class Ui {
     /** Outlined 按钮的涟漪（透明底 + 描边）。 */
     public static RippleDrawable outlinedRipple(Context c) {
         int stroke = isDark(c) ? outline(c) : outline(c);
-        GradientDrawable base = round(c, Color.TRANSPARENT, stroke, R_FULL, 1f);
-        GradientDrawable mask = round(c, Color.WHITE, Color.TRANSPARENT, R_FULL, 0);
+        GradientDrawable base = round(c, Color.TRANSPARENT, stroke, R_S, 1f);
+        GradientDrawable mask = round(c, Color.WHITE, Color.TRANSPARENT, R_S, 0);
         int pr = isDark(c) ? 0x33FFFFFF : 0x1A000000;
         return new RippleDrawable(ColorStateList.valueOf(pr), base, mask);
     }
@@ -216,7 +333,7 @@ public final class Ui {
      */
     public static LinearLayout card(Context c) {
         LinearLayout ll = column(c);
-        ll.setBackground(round(c, surfaceContainer(c), outlineVariant(c), R_L, 0.8f));
+        ll.setBackground(round(c, surfaceContainer(c), hairline(c), R_L, 0.8f));
         int p = dp(c, 16);
         ll.setPadding(p, p, p, p);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -229,7 +346,7 @@ public final class Ui {
     /** MD3 Outlined Card：透明底 + 描边。 */
     public static LinearLayout outlinedCard(Context c) {
         LinearLayout ll = column(c);
-        ll.setBackground(round(c, surfaceLow(c), outlineVariant(c), R_L, 1f));
+        ll.setBackground(round(c, surfaceLow(c), hairline(c), R_L, 1f));
         int p = dp(c, 16);
         ll.setPadding(p, p, p, p);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -253,12 +370,16 @@ public final class Ui {
     }
 
     // ================= 按钮（MD3 四种风格） =================
+    //
+    // 圆角用 R_S(8dp) 而不是 R_FULL：胶囊形按钮是通用 Material 的观感，
+    // 文档型生产力应用用矩形更沉稳（Notion 的 DESIGN.md 明确把
+    // "矩形而非胶囊" 列为区分于竞品的品牌特征）。全圆只留给 chip / tab / FAB。
 
     /** Filled Button —— 最高强调 */
     public static TextView filledButton(Context c, String text) {
         TextView tv = baseButton(c, text);
         tv.setTextColor(onPrimary(c));
-        tv.setBackground(ripple(c, primary(c), R_FULL));
+        tv.setBackground(ripple(c, primary(c), R_S));
         return tv;
     }
 
@@ -266,7 +387,7 @@ public final class Ui {
     public static TextView tonalButton(Context c, String text) {
         TextView tv = baseButton(c, text);
         tv.setTextColor(tone(c, "on_secondary_container"));
-        tv.setBackground(ripple(c, secondaryContainer(c), R_FULL));
+        tv.setBackground(ripple(c, secondaryContainer(c), R_S));
         return tv;
     }
 
@@ -274,7 +395,6 @@ public final class Ui {
     public static TextView outlinedButton(Context c, String text) {
         TextView tv = baseButton(c, text);
         tv.setTextColor(primary(c));
-        tv.setBackground(ripple(c, Color.TRANSPARENT, R_FULL));
         tv.setBackground(roundStrokeRipple(c, primary(c)));
         return tv;
     }
@@ -283,13 +403,13 @@ public final class Ui {
     public static TextView textButton(Context c, String text) {
         TextView tv = baseButton(c, text);
         tv.setTextColor(primary(c));
-        tv.setBackground(ripple(c, Color.TRANSPARENT, R_FULL));
+        tv.setBackground(ripple(c, Color.TRANSPARENT, R_S));
         return tv;
     }
 
     private static RippleDrawable roundStrokeRipple(Context c, int strokeColor) {
-        GradientDrawable base = round(c, Color.TRANSPARENT, strokeColor, R_FULL, 1f);
-        GradientDrawable mask = round(c, Color.WHITE, Color.TRANSPARENT, R_FULL, 0);
+        GradientDrawable base = round(c, Color.TRANSPARENT, strokeColor, R_S, 1f);
+        GradientDrawable mask = round(c, Color.WHITE, Color.TRANSPARENT, R_S, 0);
         int pr = isDark(c) ? 0x33FFFFFF : 0x1A000000;
         return new RippleDrawable(ColorStateList.valueOf(pr), base, mask);
     }
@@ -302,6 +422,7 @@ public final class Ui {
         tv.setMinHeight(dp(c, 40));
         tv.setClickable(true);
         tv.setFocusable(true);
+        pressScale(tv);
         return tv;
     }
 

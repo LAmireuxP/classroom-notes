@@ -3,8 +3,10 @@ package com.lamireuxp.classroom;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
@@ -27,32 +29,91 @@ import java.util.List;
  */
 public class MainActivity extends Activity implements Dialogs.DialogHost {
 
-    private static final int REQ_EXPORT_JSON = 101;
-    private static final int REQ_EXPORT_MD = 102;
-    private static final int REQ_IMPORT_JSON = 103;
-
     private Db db;
     private ScrollView scroller;
     private LinearLayout contentBox;   // 列表 + 统计的容器（会重建）
     private EditText search;
     private LinearLayout fab;
     private AlertDialog submitDialog;
+    /** 当前打开的抽屉。换主题时要把它们一起关掉——对话框不跟随主题。 */
+    private final java.util.List<AlertDialog> openSheets = new java.util.ArrayList<AlertDialog>();
 
     private String query = "";
-    private String pendingExport;
-    private String pendingName;
+    /** 上次渲染时的深浅状态，用来判断从设置页回来要不要重新着色。 */
+    private boolean renderedDark;
 
     @Override
     protected void onCreate(Bundle b) {
+        // 必须在 super.onCreate 之前：应用主题资源（窗口背景 / 状态栏 / 对话框默认色）。
+        // 这里原来漏了，MainActivity 一直吃 manifest 里的浅色主题，
+        // 只因为颜色都是代码显式设的才看着正常——状态栏和对话框会不对。
+        setTheme(Prefs.isDark(this) ? R.style.AppTheme_Dark : R.style.AppTheme);
         super.onCreate(b);
         db = Db.get(this);
+        applyWindowTheme();
         buildUi();
+    }
+
+    /**
+     * 显示抽屉并登记。
+     *
+     * 对话框是独立的 Window，主题在创建那一刻就固定了；换主题时它不会跟着变，
+     * 所以 applyTheme() 要把还开着的抽屉一起关掉——否则会出现「界面已经变深色，
+     * 抽屉还是白的」这种不一致。
+     */
+    private AlertDialog showSheet(String title, View body) {
+        for (int i = openSheets.size() - 1; i >= 0; i--) {
+            if (!openSheets.get(i).isShowing()) openSheets.remove(i);
+        }
+        AlertDialog dlg = Dialogs.sheet(this, title, body);
+        openSheets.add(dlg);
+        return dlg;
+    }
+
+    private void dismissSheets() {
+        for (AlertDialog d : openSheets) {
+            if (d.isShowing()) d.dismiss();
+        }
+        openSheets.clear();
+    }
+
+    /**
+     * 就地应用主题：不重建 Activity，只把窗口装饰和整页重新着色。
+     *
+     * 为什么不 recreate()：重建会有一下闪烁，而且会把正在播放的动画打断。
+     * 本 App 的颜色全部来自 Ui.tone()（直接读 Prefs）、视图也全是代码构建的，
+     * 所以「重新构建一遍」和 recreate 的视觉效果等价，但没有闪烁。
+     */
+    private void applyTheme() {
+        dismissSheets();
+        applyWindowTheme();
+        buildUi();
+        refresh();
+    }
+
+    /** 窗口层（状态栏 / 导航栏 / 图标明暗）。 */
+    private void applyWindowTheme() {
+        Ui.applyWindowTheme(this);
+        renderedDark = Ui.isDark(this);
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration nc) {
+        super.onConfigurationChanged(nc);
+        // manifest 把 uiMode 声明进了 configChanges，系统切深浅色时 Activity
+        // 不会自动重建。跟随系统模式下必须自己重绘，否则界面停在旧配色。
+        if (Prefs.THEME_SYSTEM.equals(Prefs.themeMode(this))) applyTheme();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        refresh();
+        // 主题可能在设置页被改过，回来时要重新着色（applyTheme 内部会 refresh）
+        if (renderedDark != Ui.isDark(this)) {
+            applyTheme();
+        } else {
+            refresh();
+        }
     }
 
     @Override
@@ -139,8 +200,11 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         titleBox.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         bar.addView(titleBox);
 
-        // 主题开关（胶囊滑块 + 图标交叉淡入，参考 galaxy Toggle-switches）
-        View themeSwitch = ThemeSwitch.create(this);
+        // 主题开关（胶囊 + 月亮/太阳，参考 galaxy Toggle-switches）
+        // 按下即生效：开关内部写偏好后回调这里就地重绘，不等动画、不重建 Activity
+        View themeSwitch = ThemeSwitch.create(this, new Runnable() {
+            @Override public void run() { applyTheme(); }
+        });
         LinearLayout.LayoutParams tsp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         tsp.rightMargin = Ui.dp(this, 6);
@@ -150,7 +214,10 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         LinearLayout settingsBtn = Icons.iconButtonFilled(this, R.drawable.ic_settings,
                 44, Ui.surfaceHighest(this), Ui.onSurfaceVariant(this));
         settingsBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { openSettingsSheet(); }
+            @Override public void onClick(View v) {
+                // 设置改成独立界面，不再弹底部抽屉
+                startActivity(new Intent(MainActivity.this, SettingsActivity.class));
+            }
         });
         bar.addView(settingsBtn);
 
@@ -457,7 +524,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
             @Override public void run() { confirmDeleteCourse(c); }
         }));
 
-        Dialogs.sheet(this, c.name, box);
+        showSheet(c.name, box);
     }
 
     private View menuRow(int iconRes, String label, final Runnable action) {
@@ -535,148 +602,4 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         return colors[db.courseCount() % colors.length];
     }
 
-    // ================== 设置 ==================
-
-    private void openSettingsSheet() {
-        LinearLayout box = Ui.column(this);
-        box.setPadding(0, Ui.dp(this, 4), 0, 0);
-
-        box.addView(menuRow(R.drawable.ic_ai, "AI 总结设置", new Runnable() {
-            @Override public void run() { openAiSettings(); }
-        }));
-        box.addView(menuRow(R.drawable.ic_mic, "语音转写设置", new Runnable() {
-            @Override public void run() { openTsSettings(); }
-        }));
-        box.addView(Ui.divider(this));
-        box.addView(menuRow(R.drawable.ic_export, "导出 JSON 备份", new Runnable() {
-            @Override public void run() { doExportJson(); }
-        }));
-        box.addView(menuRow(R.drawable.ic_md, "导出 Markdown", new Runnable() {
-            @Override public void run() { doExportMd(); }
-        }));
-        box.addView(menuRow(R.drawable.ic_import, "导入 JSON 备份", new Runnable() {
-            @Override public void run() { doImportJson(); }
-        }));
-
-        Dialogs.sheet(this, "设置与数据", box);
-    }
-
-    private void openAiSettings() {
-        Dialogs.form(this, "AI 总结设置",
-                new String[]{"API 地址", "API Key", "模型"},
-                new String[]{"https://api.deepseek.com/v1", "sk-…", "deepseek-chat"},
-                new String[]{Prefs.aiEndpoint(this), Prefs.aiKey(this), Prefs.aiModel(this)},
-                new boolean[]{false, false, false},
-                new Dialogs.OnSubmit() {
-                    @Override public void onSubmit(EditText[] f) {
-                        Prefs.saveAi(MainActivity.this,
-                                f[0].getText().toString(), f[1].getText().toString(),
-                                f[2].getText().toString());
-                        closeSubmit();
-                        Tip.show(MainActivity.this, "AI 设置已保存");
-                    }
-                });
-    }
-
-    private void openTsSettings() {
-        Dialogs.form(this, "语音转写设置",
-                new String[]{"转写方式（off / server / api）", "服务地址", "API Key", "模型名"},
-                new String[]{"off", "http://127.0.0.1:8080/v1", "（可选）", "whisper-1"},
-                new String[]{Prefs.tsMode(this), Prefs.tsEndpoint(this),
-                        Prefs.tsKey(this), Prefs.tsModel(this)},
-                new boolean[]{false, false, false, false},
-                new Dialogs.OnSubmit() {
-                    @Override public void onSubmit(EditText[] f) {
-                        String mode = f[0].getText().toString().trim();
-                        if (!mode.equals("off") && !mode.equals("server") && !mode.equals("api")) {
-                            Tip.error(MainActivity.this, "转写方式只能是 off / server / api");
-                            return;
-                        }
-                        String endpoint = f[1].getText().toString().trim();
-                        if (!mode.equals("off") && endpoint.length() == 0) {
-                            Tip.error(MainActivity.this, "该模式需要填写服务地址");
-                            return;
-                        }
-                        Prefs.saveTs(MainActivity.this, mode, endpoint,
-                                f[2].getText().toString(), f[3].getText().toString());
-                        closeSubmit();
-                        Tip.show(MainActivity.this, "转写设置已保存");
-                    }
-                });
-    }
-
-    // ================== 导入导出 ==================
-
-    private void doExportJson() {
-        try {
-            pendingExport = Backup.exportJson(this);
-            pendingName = "classroom-backup-" + Dates.today() + ".json";
-            Intent it = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-            it.addCategory(Intent.CATEGORY_OPENABLE);
-            it.setType("application/json");
-            it.putExtra(Intent.EXTRA_TITLE, pendingName);
-            startActivityForResult(it, REQ_EXPORT_JSON);
-        } catch (Throwable e) {
-            Tip.error(this, "导出失败：" + e.getMessage());
-        }
-    }
-
-    private void doExportMd() {
-        try {
-            if (db.totals()[0] == 0) {
-                Tip.error(this, "暂无笔记可导出");
-                return;
-            }
-            pendingExport = Backup.exportMarkdown(this);
-            pendingName = "classroom-notes-" + Dates.today() + ".md";
-            Intent it = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-            it.addCategory(Intent.CATEGORY_OPENABLE);
-            it.setType("text/markdown");
-            it.putExtra(Intent.EXTRA_TITLE, pendingName);
-            startActivityForResult(it, REQ_EXPORT_MD);
-        } catch (Throwable e) {
-            Tip.error(this, "导出失败：" + e.getMessage());
-        }
-    }
-
-    private void doImportJson() {
-        Intent it = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        it.addCategory(Intent.CATEGORY_OPENABLE);
-        it.setType("*/*");
-        startActivityForResult(it, REQ_IMPORT_JSON);
-    }
-
-    @Override
-    protected void onActivityResult(int req, int result, Intent data) {
-        super.onActivityResult(req, result, data);
-        if (result != RESULT_OK || data == null || data.getData() == null) {
-            pendingExport = null;
-            return;
-        }
-        android.net.Uri uri = data.getData();
-        try {
-            if (req == REQ_EXPORT_JSON || req == REQ_EXPORT_MD) {
-                Backup.writeText(this, uri, pendingExport);
-                pendingExport = null;
-                Tip.show(this, "已导出到所选位置");
-            } else if (req == REQ_IMPORT_JSON) {
-                final String text = Backup.readText(this, uri);
-                Dialogs.confirm(this, "导入备份",
-                        "将清空当前所有数据并导入所选备份，确定继续？",
-                        "导入", new Runnable() {
-                            @Override public void run() {
-                                try {
-                                    int n = Backup.importJson(MainActivity.this, text);
-                                    refresh();
-                                    Tip.show(MainActivity.this, "已导入 " + n + " 门课程");
-                                } catch (Throwable e) {
-                                    Tip.error(MainActivity.this, "导入失败：" + e.getMessage());
-                                }
-                            }
-                        });
-            }
-        } catch (Throwable e) {
-            Tip.error(this, "操作失败：" + e.getMessage());
-        }
-    }
 }
