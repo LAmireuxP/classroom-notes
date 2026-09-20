@@ -23,20 +23,36 @@ public final class Tip {
     private Tip() {}
 
     private static final long DURATION = 2600;
+    /** 带操作按钮时停留更久——用户得先读完再决定点不点。 */
+    private static final long DURATION_ACTION = 6000;
 
     public static void show(Activity a, String msg) {
-        showInternal(a, msg, Ui.inverseSurface(a), Ui.inverseOnSurface(a));
+        showInternal(a, msg, Ui.inverseSurface(a), Ui.inverseOnSurface(a), null, null);
     }
 
     public static void error(Activity a, String msg) {
-        showInternal(a, msg, Ui.tone(a, "error_container"), Ui.onErrorContainer(a));
+        showInternal(a, msg, Ui.tone(a, "error_container"), Ui.onErrorContainer(a), null, null);
     }
 
     public static void success(Activity a, String msg) {
-        showInternal(a, msg, Ui.tone(a, "primary_container"), Ui.onPrimaryContainer(a));
+        showInternal(a, msg, Ui.tone(a, "primary_container"), Ui.onPrimaryContainer(a), null, null);
     }
 
-    private static void showInternal(Activity a, String msg, int bg, int fg) {
+    /**
+     * 带操作按钮的错误提示（MD3 Snackbar 的 action）。
+     *
+     * 用在「有明确出路」的失败上——比如设备没有系统语音识别服务，
+     * 用户该做的是去开云转写，那就直接把入口摆在提示条上，
+     * 而不是让他照着文案自己去翻菜单。
+     */
+    public static void errorAction(Activity a, String msg, String actionLabel,
+                                   final Runnable action) {
+        showInternal(a, msg, Ui.tone(a, "error_container"), Ui.onErrorContainer(a),
+                actionLabel, action);
+    }
+
+    private static void showInternal(Activity a, String msg, int bg, int fg,
+                                     String actionLabel, final Runnable action) {
         if (a == null || a.isFinishing()) return;
         if (msg == null || msg.length() == 0) return;
 
@@ -58,6 +74,28 @@ public final class Tip {
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         tv.setLayoutParams(tlp);
         bar.addView(tv);
+
+        // 操作按钮（可空）
+        if (actionLabel != null && action != null) {
+            TextView act = Ui.text(a, actionLabel, Ui.T_BODY, fg, true);
+            int ap = Ui.dp(a, 10);
+            act.setPadding(ap, Ui.dp(a, 6), ap, Ui.dp(a, 6));
+            act.setBackground(Ui.ripple(a, Color.TRANSPARENT, Ui.R_S));
+            act.setClickable(true);
+            act.setFocusable(true);
+            Ui.pressScale(act);
+            LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            alp.leftMargin = Ui.dp(a, 8);
+            act.setLayoutParams(alp);
+            act.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    dismiss(root, bar);
+                    action.run();
+                }
+            });
+            bar.addView(act);
+        }
 
         // 关闭按钮
         LinearLayout close = Icons.iconButton(a, R.drawable.ic_close, 32, fg);
@@ -84,7 +122,7 @@ public final class Tip {
 
         bar.postDelayed(new Runnable() {
             @Override public void run() { dismiss(root, bar); }
-        }, DURATION);
+        }, actionLabel != null ? DURATION_ACTION : DURATION);
     }
 
     private static void dismiss(final ViewGroup root, final View bar) {

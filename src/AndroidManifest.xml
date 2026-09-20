@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.lamireuxp.classroom"
-    android:versionCode="2"
-    android:versionName="1.1">
+    android:versionCode="3"
+    android:versionName="1.2">
 
     <uses-sdk android:minSdkVersion="22" android:targetSdkVersion="33" />
 
@@ -19,6 +19,25 @@
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />
+        </intent>
+
+        <!--
+          设备侧识别放行（厂商 CTA / 机型白名单）要在厂商语音助手里同意一次，
+          VoiceAuth 需要能解析到它们的启动入口；同理需要系统「语音输入」设置页。
+          包可见性过滤对 getLaunchIntentForPackage 和隐式 Intent 都生效，
+          不在这里声明就会全部解析不到、点了「去授权」没有任何反应。
+        -->
+        <package android:name="com.miui.voiceassist" />
+        <package android:name="com.heytap.speechassist" />
+        <package android:name="com.coloros.speechassist" />
+        <package android:name="com.vivo.voiceassist" />
+        <package android:name="com.vivo.ai" />
+        <package android:name="com.huawei.vassistant" />
+        <package android:name="com.hihonor.vassistant" />
+        <package android:name="com.meizu.voiceassist" />
+        <package android:name="com.samsung.android.bixby.agent" />
+        <intent>
+            <action android:name="android.settings.VOICE_INPUT_SETTINGS" />
         </intent>
     </queries>
 

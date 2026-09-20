@@ -32,7 +32,18 @@ public class SpeechSession {
         void onPartial(String text);
         /** finalText 为识别到的完整文本（可能为空）；audio 为录音字节（可能为 null）。 */
         void onFinished(String finalText, byte[] audio);
-        void onError(String message, boolean fatal);
+
+        /**
+         * @param fatal        会话已经没法继续了，调用方需要结束它（cancel() 会连同录音
+         *                     文件一起删掉）。只有「没开录音兜底、识别又用不了」时才为
+         *                     true——开了录音兜底的话，会话会丢掉识别器降级成纯录音继续
+         *                     跑，音频不会因为识别出错被赔进去。
+         * @param cloudFallback 这个错误能靠「开启云端转写」绕过。
+         *                      为 true 时调用方应给出跳转入口，而不是只甩一句话——
+         *                      遇到没有识别服务或识别服务不响应的设备，用户照着
+         *                      「去系统设置里改」往往找不到地方，开云转写才是真出路。
+         */
+        void onError(String message, boolean fatal, boolean cloudFallback);
     }
 
     private final Context ctx;
@@ -96,9 +107,34 @@ public class SpeechSession {
     }
 
     /**
-     * @param recordAudio 是否同时录制音频（用于云转写兜底）
+     * 本进程是否已确认「这台设备的识别服务不放行本 App」。
+     * 调用方据此把提示条的入口换成「去授权」（厂商语音助手），而不是让用户去翻系统设置。
      */
-    public void start(boolean recordAudio) {
+    public static boolean recognizeBlocked() {
+        return sRecognizeBlocked;
+    }
+
+    /**
+     * 进程级「这台设备/这套识别服务已经放行过本 App 吗」。
+     *
+     * 起因：澎湃 OS 4 的小米 AsrService 里有个 CTA / 设备型号白名单（isCTAAllow），
+     * 对没同意过「跨应用语音识别」、或机型不在白名单里的调用方一律拒绝并立刻自毁。
+     * 这样的设备上，每次录音都去戳一下识别服务、等它报 ERROR_SERVER_DISCONNECTED
+     * 再降级，是在白费一次绑定 + 一次失败提示。这里把「这服务不肯对本 App 放行」
+     * 记到进程里：同一进程内的后续录音直接走纯录音 + 云转写，不再戳识别。
+     *
+     * 进程重启会清空——所以升级、换机后会自动重新试一次（fresh 状态），不会把一个
+     * 也许修好了的服务永久关掉；真的出过字（onPartialResults / onResults）也会立刻清标记。
+     * 判定只在「一次回调都没给过就被拒」时成立（见 giveUpRecognition），保守地只记确认不行的。
+     */
+    private static boolean sRecognizeBlocked = false;
+
+    /**
+     * @param recordAudio 是否同时录制音频（用于云转写兜底）
+     * @return 是否真的开始工作。false 表示同步就失败了（调用方别再渲染录音界面，
+     *         否则会留下一个「正在录音」的假面板），并且 onError 已经回调过。
+     */
+    public boolean start(boolean recordAudio) {
         this.recordAudio = recordAudio;
         finalText.setLength(0);
         partial = "";
@@ -110,19 +146,27 @@ public class SpeechSession {
 
         if (recordAudio) startRecorder();
 
-        if (recognitionAvailable(ctx)) {
+        // 这台机器上识别服务确认过不肯对本 App 放行（澎湃 OS 4 的 CTA/白名单就是这类）：
+        // 别再去戳它、等它拒绝。直接按「识别不可用」处理。
+        if (recognitionAvailable(ctx) && !sRecognizeBlocked) {
             main.post(new Runnable() {
                 @Override public void run() { startRecognizer(); }
             });
-        } else if (!recordAudio) {
-            // 既没有系统识别，又没有录音 -> 无法工作
-            recording = false;
-            listener.onError("当前设备没有可用的语音识别服务，请在「转写设置」开启云端转写", true);
-            return;
-        } else {
-            // 有录音兜底：识别跑不了，但得说一声，否则用户只会看到「录完没出字」
-            listener.onError("系统语音识别不可用，本次仅录音，结束后走云端转写", false);
+            return true;
         }
+        if (!recordAudio) {
+            // 既没有系统识别、又没开录音兜底 —— 无法工作
+            recording = false;
+            listener.onError(sRecognizeBlocked
+                    ? "系统语音识别未获厂商放行，可去语音助手里同意「跨应用识别」，或改用云端转写"
+                    : "这台设备没有系统语音识别服务，可改用云端转写", true, true);
+            return false;
+        }
+        // 有录音兜底：识别跑不了，但得说一声，否则用户只会看到「录完没出字」
+        listener.onError(sRecognizeBlocked
+                ? "系统语音识别未获厂商放行，本次仅录音，结束后走云端转写"
+                : "系统语音识别不可用，本次仅录音，结束后走云端转写", false, true);
+        return true;
     }
 
     // ---------- 绑定识别服务 ----------
@@ -140,10 +184,7 @@ public class SpeechSession {
     private final Runnable deadRecognizerWatchdog = new Runnable() {
         @Override public void run() {
             if (!recording || paused || anyCallback) return;
-            listener.onError(recordAudio
-                            ? "系统语音识别无响应，本次仅录音，结束后走云端转写"
-                            : "系统语音识别无响应，请在系统设置里把语音识别服务设为默认",
-                    !recordAudio);
+            giveUpRecognition("系统语音识别无响应");
         }
     };
 
@@ -168,7 +209,7 @@ public class SpeechSession {
             main.postDelayed(deadRecognizerWatchdog, 4000);
             recognizer.startListening(recognizerIntent());
         } catch (Throwable e) {
-            listener.onError("语音识别启动失败：" + e.getMessage(), true);
+            giveUpRecognition("语音识别启动失败：" + e.getMessage());
         }
     }
 
@@ -206,6 +247,40 @@ public class SpeechSession {
         }
     }
 
+    /**
+     * 识别彻底用不了了（服务连不上 / 被拒 / 连接断开 / 启动就抛异常）。
+     *
+     * 只放弃「识别」，不放弃会话：开着录音兜底的话音频还在手上，录到结束照样能出字，
+     * 所以这里丢掉识别器、让会话降级成纯录音继续跑，并按非致命上报。
+     * 没开录音兜底才是真的没退路，那时按致命上报，由调用方结束会话。
+     *
+     * 原来这几种错误一律按致命报上去，调用方拿到就 cancel()——而 cancel() 会删掉
+     * 录音文件：识别出的毛病，赔进去的是用户整段录音。
+     *
+     * cloudFallback 只在真正有出路的那一支为 true：还能继续录的时候，云转写本来
+     * 就开着，再给一个「去设置」的入口只会把人指到已经配好的页面上。
+     */
+    private void giveUpRecognition(String reason) {
+        // 一次回调都没给过就被拒，是设备侧「不放行」的特征（服务直接拒绝并自毁，见 VoiceAuth）；
+        // 出过回调之后才失败的更像偶发故障，不记，下次录音仍然重新去试。
+        // 标记只在进程内，重启/升级/换机后清零，所以不会永久关掉一个也许已经能用的服务。
+        sRecognizeBlocked = !anyCallback;
+        destroyRecognizer();
+        main.removeCallbacks(deadRecognizerWatchdog);
+        wantRestart = false;
+        if (sRecognizeBlocked) {
+            listener.onError(recordAudio
+                    ? "系统语音识别未获厂商放行，继续录音，结束后走云端转写"
+                    : "系统语音识别未获厂商放行，可去语音助手里同意「跨应用识别」，或改用云端转写",
+                    !recordAudio, true);
+            return;
+        }
+        listener.onError(recordAudio
+                        ? reason + "，继续录音，结束后走云端转写"
+                        : reason + "，可改用云端转写",
+                !recordAudio, !recordAudio);
+    }
+
     private final RecognitionListener recognitionListener = new RecognitionListener() {
         @Override public void onReadyForSpeech(Bundle params) { anyCallback = true; }
         @Override public void onBeginningOfSpeech() { anyCallback = true; }
@@ -216,6 +291,8 @@ public class SpeechSession {
 
         @Override public void onPartialResults(Bundle results) {
             anyCallback = true;
+            // 识别真的出过字 = 这台机器上服务对本 App 是放行的；之前的「放行失败」标记就过时了。
+            sRecognizeBlocked = false;
             ArrayList<String> list = results.getStringArrayList(
                     SpeechRecognizer.RESULTS_RECOGNITION);
             if (list != null && list.size() > 0) {
@@ -226,6 +303,7 @@ public class SpeechSession {
 
         @Override public void onResults(Bundle results) {
             anyCallback = true;
+            sRecognizeBlocked = false;
             ArrayList<String> list = results.getStringArrayList(
                     SpeechRecognizer.RESULTS_RECOGNITION);
             if (list != null && list.size() > 0) {
@@ -260,20 +338,24 @@ public class SpeechSession {
                 retryWithExplicit();
                 return;
             }
-            boolean fatal = error == SpeechRecognizer.ERROR_CLIENT
+            // 这三个码意味着识别器本身已经废了：重建也接不上，不能再指望识别
+            if (error == SpeechRecognizer.ERROR_CLIENT
                     || error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS
-                    || error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED;
-            listener.onError(describe(ctx, error), fatal);
-            if (!fatal) maybeRestart();
+                    || error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED) {
+                giveUpRecognition(describe(ctx, error));
+                return;
+            }
+            listener.onError(describe(ctx, error), false, true);
+            maybeRestart();
         }
     };
 
     private void maybeRestart() {
-        if (recording && !paused) {
+        if (recording && !paused && recognizer != null) {
             wantRestart = true;
             main.postDelayed(new Runnable() {
                 @Override public void run() {
-                    if (recording && !paused && wantRestart) {
+                    if (recording && !paused && wantRestart && recognizer != null) {
                         wantRestart = false;
                         try {
                             recognizer.startListening(recognizerIntent());
@@ -391,16 +473,24 @@ public class SpeechSession {
             case SpeechRecognizer.ERROR_AUDIO: return "录音出错";
             case SpeechRecognizer.ERROR_CLIENT: return "识别服务连接失败";
             case SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS:
+                // 录音权限明明给了、识别服务却回这个码：是服务侧的「跨应用放行」没通过
+                // （澎湃 OS 4 小米 AsrService 的 CTA / 机型白名单就是这类，见 VoiceAuth）。
+                // 这种设备在系统设置里改不了，用户要去厂商语音助手同意一次，或开云端转写。
                 return hasMicPermission(c)
-                        ? "系统语音识别服务拒绝了请求，请在系统设置里把语音识别服务设为默认"
+                        ? "系统语音识别未获厂商放行（厂商策略）"
                         : "缺少麦克风权限";
             case SpeechRecognizer.ERROR_NETWORK: return "网络错误，语音识别需要联网";
-            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT: return "网络超时";
+            case SpeechRecognizer.ERROR_NETWORK_TIMEOUT: return "网络超时，语音识别需要联网";
             case SpeechRecognizer.ERROR_NO_MATCH: return "没有匹配的语音";
             case SpeechRecognizer.ERROR_RECOGNIZER_BUSY: return "识别服务忙";
             case SpeechRecognizer.ERROR_SERVER: return "识别服务出错";
+            case SpeechRecognizer.ERROR_SERVER_DISCONNECTED: return "与识别服务的连接断开";
             case SpeechRecognizer.ERROR_SPEECH_TIMEOUT: return "未检测到语音";
-            default: return "语音识别出错(" + error + ")";
+            // 下面几个是 API 31+ 才有的常量，用字面量避免低版本编译不过
+            case 10: return "请求过于频繁，识别服务限流了";
+            case 12: return "识别服务不支持中文";
+            case 13: return "识别服务的语言包不可用";
+            default: return "语音识别出错（错误码 " + error + "）";
         }
     }
 

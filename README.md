@@ -1,7 +1,7 @@
 # 课堂笔记 · Android 原生版
 
-课程笔记、待办、语音转写、AI 总结。纯原生 Java 实现，零第三方依赖，APK 约 183 KB。
-当前版本 **1.1**。
+课程笔记、待办、语音转写、AI 总结。纯原生 Java 实现，零第三方依赖，APK 约 187 KB。
+当前版本 **1.2**。
 
 ## 功能
 
@@ -14,12 +14,69 @@
 
 ## 下载
 
-- 应用（国内可直连）：https://lamireuxp.github.io/classroom-notes/dist/classroom-1.1.apk
+- 应用（国内可直连）：https://lamireuxp.github.io/classroom-notes/dist/classroom-1.2.apk
 - 发布页：https://github.com/LAmireuxP/classroom-notes/releases
 
 安装前请先卸载签名不同的旧版本；笔记数据用应用内「导出备份 / 导入备份」迁移。
 
+## 语音识别在各家 ROM 上的差异（小米 / OPPO / vivo…）
+
+**系统语音识别能不能用，不只取决于麦克风权限。** 国产 ROM 的识别服务普遍加了一道
+「跨应用放行」判定，小米就是 `AsrService` 里的 CTA / 机型白名单（实测日志）：
+
+```
+AsrService: handleCTAAndPerms: isCTAAllow=false isRecordPermGranted=true
+                                               ↑ 麦克风权限是给足的
+AsrService: onStartListening: isCTAAllow=false …
+AsrService: onDestroy        ← 服务不放行，随即自毁，App 收到 ERROR_SERVER_DISCONNECTED
+```
+
+同版本 HyperOS 4 的两台机器实测结果就不一样：一台正常实时出字，一台三个键
+（`xiaoai_cta_change` / `soundrecorder_cta_net_accepted` / `soundrecorder_cta_permission_accepted`）
+都是「没同意过」的状态，识别直接被拒。**系统设置里没有能让第三方 App 通过的开关**，
+只能去厂商那一侧同意一次：
+
+| 厂商 | 同意入口 |
+| --- | --- |
+| 小米 / 澎湃 OS | 小爱同学 → 我的 → 设置（隐私 / 跨应用语音识别）；首次使用小爱时的隐私引导也会写入这一项 |
+| OPPO / 一加 | 小布助手 → 设置 |
+| vivo | Jovi 语音 → 设置 |
+| 华为 / 荣耀 | 小艺 → 设置 |
+| 其他 | 系统设置 → 语音输入（`android.settings.VOICE_INPUT_SETTINGS`） |
+
+App 里的对应行为：
+
+- 识别被设备侧拦下（**一次回调都没给过就被拒**）时，提示条上的按钮是**「去授权」**，
+  点了会打开上表里的语音助手（按包名依次尝试：`com.miui.voiceassist`、`com.heytap.speechassist`、
+  `com.coloros.speechassist`、`com.vivo.voiceassist`、`com.vivo.ai`、`com.huawei.vassistant`、
+  `com.hihonor.vassistant`、`com.meizu.voiceassist`、`com.samsung.android.bixby.agent`，
+  最后兜底到系统「语音输入」设置页）。这些入口都写进了 manifest 的 `<queries>`——
+  targetSdk ≥ 30 的包可见性过滤会让没声明的包解析不到，点了等于没点。
+- 「拦下」这件事只记在**进程内**：这次运行里后续录音直接走纯录音 + 云转写，不再反复去戳
+  识别服务；进程重启 / 升级 / 换机后会自动重新试一次，识别真的出过字也立刻解除标记。
+  只记「零回调被拒」，偶发故障（出过回调之后才断）不记，下次照样重试。
+- **无论哪种设备，录音都不会因为识别失败被丢掉**：识别用不了时会话降级成纯录音继续跑，
+  结束后自动走云端转写。
+
+兜底路线（任何设备都能用）：设置 → 语音转写设置 → 服务端转写 / API 直连，把录音上传到
+自建的 whisper.cpp 或任意 OpenAI 兼容转写接口。
+
 ## 更新日志
+
+### 1.2
+
+- **修复录音丢失**：识别服务中途失效（被拒 / 连接断开 / 启动抛异常）时，会话降级成纯录音继续跑，
+  已经录下的音频不再被删。原来这类错误一律按致命处理，调用方 `cancel()` 会把录音文件一并删除——
+  识别出的毛病，赔进去的是用户整段录音。真机对照：旧版在识别被拒后 **93 毫秒**就 `MediaRecorder: stop+`
+  并删文件，新版继续录到用户手动结束。
+- **修复导入备份丢数据**：导入改成「先全量解析、再单事务清空重建」。损坏的备份文件不再清空已有数据
+  （原来先删后写，文件里任意一条记录不合法，用户拿到的是「导入失败」加一个已经被清空的库），
+  并校验 `format` 字段、修掉空 id 在主键上互相覆盖的问题。真机对照：同一个损坏文件，旧版把课程
+  清空并替换成半个文件，新版提示「第 2 门课程不是有效记录」且数据一字未动。
+- **设备侧识别放行**：识别被厂商策略拦下时（小米 CTA / 机型白名单，见上文），提示条给「去授权」
+  入口直达厂商语音助手，并把「拦下」记入进程，后续录音不再反复戳识别服务；文案不再引导用户去
+  系统设置里改默认识别服务（那条路在这些机型上走不通）。新增 `VoiceAuth` 与 manifest `<queries>` 声明。
+- 提示条只在真的有出路时才挂按钮：「还能继续录」的那支不再错挂「去设置」。
 
 ### 1.1
 

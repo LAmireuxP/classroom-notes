@@ -65,6 +65,25 @@ public class Db extends SQLiteOpenHelper {
         // v1 起步，暂无迁移
     }
 
+    // ---------------- 事务 ----------------
+
+    /**
+     * 把一整段写操作放进同一个事务：中途抛异常整体回滚，不会留下改了一半的库。
+     *
+     * 事务可以嵌套——body 里再调用自己带事务的方法（如 deleteCourse）没问题，
+     * 内层失败会让整个外层一起回滚。
+     */
+    public void transaction(Runnable body) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            body.run();
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
     // ---------------- 模型 ----------------
 
     public static class Course {

@@ -9,6 +9,7 @@ import org.json.JSONObject;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -20,12 +21,15 @@ public final class Backup {
 
     private Backup() {}
 
+    /** 根节点上的格式标记。导入时只用来挡「拿错文件」，不强求存在。 */
+    private static final String FORMAT = "classroom-v2";
+
     // ---------------- JSON 备份 ----------------
 
     public static String exportJson(Context c) throws Exception {
         Db db = Db.get(c);
         JSONObject root = new JSONObject();
-        root.put("format", "classroom-v2");
+        root.put("format", FORMAT);
         root.put("exportedAt", System.currentTimeMillis());
         JSONArray courses = new JSONArray();
         for (Db.Course course : db.courses()) {
@@ -69,62 +73,109 @@ public final class Backup {
         return root.toString(2);
     }
 
-    /** 导入：清空后重建。返回导入的课程数。 */
+    /**
+     * 导入：整体替换现有数据。返回导入的课程数。
+     *
+     * 分两步走，顺序是关键：
+     *   1. 先把整份 JSON 解析成内存对象——格式不对、记录结构不对都在这一步失败；
+     *   2. 全部通过之后，才在一个事务里清空旧数据并重建。
+     *
+     * 原先是边解析边写、而且先清空再写：文件里随便哪一条记录有问题，
+     * 用户看到的是「导入失败」，手里却已经是一个被清空（或写了一半）的库。
+     * 现在只要有任何一步不通过，数据库一个字节都不会动。
+     */
     public static int importJson(Context c, String json) throws Exception {
         JSONObject root = new JSONObject(json);
+
+        // 带 format 的必须是自己的格式；不带的（更早的网页版导出文件）照常放行
+        String format = root.optString("format", "");
+        if (format.length() > 0 && !FORMAT.equals(format)) {
+            throw new Exception("不认识的备份格式：" + format);
+        }
         JSONArray courses = root.optJSONArray("courses");
         if (courses == null) throw new Exception("文件格式不正确");
-        Db db = Db.get(c);
 
-        // 清空现有数据
-        List<Db.Course> old = db.courses();
-        for (Db.Course o : old) db.deleteCourse(o.id);
+        final Parsed parsed = parse(courses);
+        final Db db = Db.get(c);
+        db.transaction(new Runnable() {
+            @Override public void run() {
+                List<Db.Course> old = db.courses();
+                for (Db.Course o : old) db.deleteCourse(o.id);
+                // 课程先写：sort 是按当前课程数算的，顺序决定列表里的先后
+                for (Db.Course co : parsed.courses) {
+                    db.saveCourse(co.id, co.name, co.teacher, co.color);
+                }
+                for (Db.Note n : parsed.notes) db.saveNote(n);
+                for (Db.Todo t : parsed.todos) db.saveTodo(t);
+            }
+        });
+        return parsed.courses.size();
+    }
 
-        int count = 0;
+    /** 解析结果。全部解析通过之后才允许碰数据库。 */
+    private static final class Parsed {
+        final List<Db.Course> courses = new ArrayList<Db.Course>();
+        final List<Db.Note> notes = new ArrayList<Db.Note>();
+        final List<Db.Todo> todos = new ArrayList<Db.Todo>();
+    }
+
+    /**
+     * 解析课程 / 笔记 / 待办。字段缺失一律取默认值——备份来自哪个版本都尽量把数据救回来；
+     * 只有结构本身不对（数组里塞的不是对象）才报错，那种文件继续导入没有意义。
+     */
+    private static Parsed parse(JSONArray courses) throws Exception {
+        Parsed p = new Parsed();
         for (int i = 0; i < courses.length(); i++) {
-            JSONObject co = courses.getJSONObject(i);
-            String cid = co.optString("id", Id.gen());
-            db.saveCourse(cid, co.optString("name", "未命名课程"),
-                    co.optString("teacher", ""), co.optString("color", "#4f5bff"));
+            JSONObject co = courses.optJSONObject(i);
+            if (co == null) throw new Exception("第 " + (i + 1) + " 门课程不是有效记录");
+
+            Db.Course course = new Db.Course();
+            course.id = idOrNew(co.optString("id", ""));
+            course.name = co.optString("name", "未命名课程");
+            course.teacher = co.optString("teacher", "");
+            course.color = co.optString("color", "#4f5bff");
+            p.courses.add(course);
 
             JSONArray notes = co.optJSONArray("notes");
-            if (notes != null) {
-                for (int j = 0; j < notes.length(); j++) {
-                    JSONObject o = notes.getJSONObject(j);
-                    Db.Note n = new Db.Note();
-                    n.id = o.optString("id", Id.gen());
-                    n.courseId = cid;
-                    n.title = o.optString("title", "");
-                    n.date = o.optString("date", "");
-                    n.content = o.optString("content", "");
-                    n.pinned = o.optBoolean("pinned", false);
-                    n.created = o.optLong("created", System.currentTimeMillis());
-                    JSONArray kp = o.optJSONArray("keyPoints");
-                    if (kp != null) {
-                        for (int k = 0; k < kp.length(); k++) n.keyPoints.add(kp.optString(k, ""));
-                    }
-                    db.saveNote(n);
+            for (int j = 0; notes != null && j < notes.length(); j++) {
+                JSONObject o = notes.optJSONObject(j);
+                if (o == null) throw new Exception("第 " + (i + 1) + " 门课程的第 " + (j + 1) + " 条笔记不是有效记录");
+                Db.Note n = new Db.Note();
+                n.id = idOrNew(o.optString("id", ""));
+                n.courseId = course.id;
+                n.title = o.optString("title", "");
+                n.date = o.optString("date", "");
+                n.content = o.optString("content", "");
+                n.pinned = o.optBoolean("pinned", false);
+                n.created = o.optLong("created", System.currentTimeMillis());
+                JSONArray kp = o.optJSONArray("keyPoints");
+                for (int k = 0; kp != null && k < kp.length(); k++) {
+                    n.keyPoints.add(kp.optString(k, ""));
                 }
+                p.notes.add(n);
             }
 
             JSONArray todos = co.optJSONArray("todos");
-            if (todos != null) {
-                for (int j = 0; j < todos.length(); j++) {
-                    JSONObject o = todos.getJSONObject(j);
-                    Db.Todo t = new Db.Todo();
-                    t.id = o.optString("id", Id.gen());
-                    t.courseId = cid;
-                    t.title = o.optString("title", "");
-                    t.due = o.optString("due", "");
-                    t.priority = o.optString("priority", "medium");
-                    t.completed = o.optBoolean("completed", false);
-                    t.created = o.optLong("created", System.currentTimeMillis());
-                    db.saveTodo(t);
-                }
+            for (int j = 0; todos != null && j < todos.length(); j++) {
+                JSONObject o = todos.optJSONObject(j);
+                if (o == null) throw new Exception("第 " + (i + 1) + " 门课程的第 " + (j + 1) + " 个待办不是有效记录");
+                Db.Todo t = new Db.Todo();
+                t.id = idOrNew(o.optString("id", ""));
+                t.courseId = course.id;
+                t.title = o.optString("title", "");
+                t.due = o.optString("due", "");
+                t.priority = o.optString("priority", "medium");
+                t.completed = o.optBoolean("completed", false);
+                t.created = o.optLong("created", System.currentTimeMillis());
+                p.todos.add(t);
             }
-            count++;
         }
-        return count;
+        return p;
+    }
+
+    /** id 缺失或为空就现生成一个：两条空 id 的记录会在主键上互相覆盖，悄悄少掉一条。 */
+    private static String idOrNew(String id) {
+        return id == null || id.length() == 0 ? Id.gen() : id;
     }
 
     // ---------------- Markdown ----------------

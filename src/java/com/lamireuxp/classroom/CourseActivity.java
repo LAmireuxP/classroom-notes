@@ -868,11 +868,6 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         final String mode = Prefs.tsMode(this);
         final boolean recordAudio = !"off".equals(mode);
 
-        if ("off".equals(mode) && !SpeechSession.recognitionAvailable(this)) {
-            Tip.error(this, "系统语音识别不可用，请在「设置 → 语音转写」开启云端转写");
-            return;
-        }
-
         speech = new SpeechSession(this, new SpeechSession.Listener() {
             @Override public void onPartial(String text) {
                 if (recTextView != null) recTextView.setText(text);
@@ -892,9 +887,33 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                 renderContent();
             }
 
-            @Override public void onError(String message, boolean fatal) {
-                Tip.error(CourseActivity.this, message);
+            /**
+             * 出错时的出路，按「哪条路走得通」排优先级：
+             *
+             *  - 识别被厂商拦下（小米 CTA / 机型白名单这类）时，「去设置」是死路——
+             *    系统设置里根本没有能让第三方 App 通过的开关。这种设备唯一可能恢复
+             *    实时识别的是去厂商语音助手里同意一次「跨应用识别」，所以入口给到那边。
+             *  - 只是缺服务 / 服务没配好时，才把用户送去开云端转写。
+             *
+             * 两条都没有的普通错误就只报错，不硬塞一个点了没用的按钮。
+             */
+            @Override public void onError(String message, boolean fatal, boolean cloudFallback) {
+                if (SpeechSession.recognizeBlocked()) {
+                    Tip.errorAction(CourseActivity.this, message, "去授权",
+                            new Runnable() {
+                                @Override public void run() { openVoiceAuth(); }
+                            });
+                } else if (cloudFallback) {
+                    Tip.errorAction(CourseActivity.this, message, "去设置",
+                            new Runnable() {
+                                @Override public void run() { openTsSettings(); }
+                            });
+                } else {
+                    Tip.error(CourseActivity.this, message);
+                }
                 if (fatal) {
+                    // 只有「没开录音兜底」时才会收到 fatal（见 SpeechSession.giveUpRecognition）：
+                    // 开着兜底的话会话会降级成纯录音继续跑。所以这里的 cancel() 删不到正在录的音频。
                     stopTicker();
                     if (speech != null) speech.cancel();
                     speech = null;
@@ -903,7 +922,12 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
             }
         });
 
-        speech.start(recordAudio);
+        // start() 可能同步就失败（比如设备没有识别服务）。那样 onError 已经回调过、
+        // 提示也弹了，这里绝不能再往下渲染录音面板——否则会留下一个假的「正在录音」。
+        if (!speech.start(recordAudio)) {
+            speech = null;
+            return;
+        }
         renderRecordingPanel();
         startTicker();
     }
@@ -1028,6 +1052,21 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         n.keyPoints = Extract.keyPoints(text);
         db.saveNote(n);
         Tip.success(this, "录音笔记已保存");
+    }
+
+    /** 打开语音转写设置页——识别不可用时，云转写是唯一的出路。 */
+    private void openTsSettings() {
+        startActivity(new Intent(this, TsSettingsActivity.class));
+    }
+
+    /**
+     * 去厂商语音助手 / 系统「语音输入」设置里同意「跨应用识别」。
+     * 一条都没找到时说清下一步，别让用户对着一个没反应的按钮发呆。
+     */
+    private void openVoiceAuth() {
+        if (!VoiceAuth.open(this)) {
+            Tip.error(this, "没找到语音助手的入口，可用「设置 → 语音转写设置」改用云端转写");
+        }
     }
 
     private void transcribeThenNote(final byte[] audio) {
