@@ -219,13 +219,25 @@ public final class Ui {
     /**
      * 优先级的语义色：高 = error 红，中 = primary 主题色，低 = success 绿。
      *
-     * 主页面进度条、它的图例、以及「新建待办」的优先级选项共用这一份映射——
-     * 图例上的红点要和选项里的红点对得上，两边各写一套迟早会走偏。
+     * 主页面进度条、课程页进度条、图例、以及「新建待办」的优先级分段共用这一份映射——
+     * 哪一处对不上，颜色就白标了。
      */
     public static int priorityColor(Context c, String priority) {
         if ("high".equals(priority)) return error(c);
         if ("low".equals(priority)) return tone(c, "success");
         return primary(c);
+    }
+
+    /** 优先级的短名（进度条、分段控件里用）。 */
+    public static String priorityShort(String priority) {
+        if ("high".equals(priority)) return "高";
+        if ("low".equals(priority)) return "低";
+        return "中";
+    }
+
+    /** 优先级的全名（待办行、对话框选项里用）。 */
+    public static String priorityName(String priority) {
+        return priorityShort(priority) + "优先级";
     }
 
     // ================= 形状 / 背景 =================
@@ -479,19 +491,142 @@ public final class Ui {
         return v;
     }
 
+    // ================= 待办进度 =================
+
+    /**
+     * 待办进度：一个优先级一行（颜色圆点 + 「高 0/1」+ 进度条），纵向排开。
+     *
+     * 主页面统计卡与课程页共用同一份——两处口径必须一致。每行条的全长 = 该优先级的
+     * 待办数，实心 = 已完成占比，底槽用同色的浅版；哪一行有颜色、写着什么数字，
+     * 本身就是图例，不用再单独画一行。
+     *
+     * @param byP Db.todoByPriority() 的结果：[总数, 已完成]，下标 = 高/中/低
+     */
+    public static View priorityProgress(Context c, int[][] byP) {
+        LinearLayout col = column(c);
+        boolean first = true;
+        for (int i = 0; i < Db.PRIORITY_KEYS.length; i++) {
+            if (byP[i][0] == 0) continue;        // 这个优先级没有待办就不占一行
+            col.addView(priorityRow(c, Db.PRIORITY_KEYS[i], byP[i][0], byP[i][1], !first));
+            first = false;
+        }
+        return col;
+    }
+
+    private static View priorityRow(Context c, String key, int total, int done, boolean gap) {
+        int color = priorityColor(c, key);
+        LinearLayout row = row(c);
+        if (gap) {
+            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rp.topMargin = dp(c, 8);
+            row.setLayoutParams(rp);
+        }
+
+        View dot = new View(c);
+        dot.setBackground(circle(color, dp(c, 7)));
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(dp(c, 7), dp(c, 7));
+        dlp.rightMargin = dp(c, 8);
+        dot.setLayoutParams(dlp);
+        row.addView(dot);
+
+        // 标签按权重占一段固定比例，三条的进度条左端才会对齐（宽度跟内容走就会参差不齐）
+        TextView label = text(c, priorityShort(key) + " " + done + "/" + total,
+                T_LABEL, onSurfaceVariant(c), false);
+        label.setLayoutParams(lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.34f));
+        row.addView(label);
+
+        LinearLayout track = new LinearLayout(c);
+        track.setLayoutParams(lpW(0, dp(c, 6), 0.66f));
+        track.setBackground(round(c, withAlpha(color, 0.18f), Color.TRANSPARENT, R_FULL, 0));
+        // 「已完成 / 未完成」两个带权重的子 View：LinearLayout 按权重之和分配剩余空间，
+        // 只放一个权重为完成比的 fill 的话，它无论多小都会吃掉整段（老进度条就是这么满的）。
+        if (done > 0) {
+            View filled = new View(c);
+            filled.setLayoutParams(new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.MATCH_PARENT, done));
+            filled.setBackground(round(c, color, Color.TRANSPARENT, R_FULL, 0));
+            track.addView(filled);
+        }
+        if (total - done > 0) {
+            View rest = new View(c);   // 透明，露出同色的浅底槽
+            rest.setLayoutParams(new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.MATCH_PARENT, total - done));
+            track.addView(rest);
+        }
+        row.addView(track);
+        return row;
+    }
+
+    // ================= 横向分段单选 =================
+
+    /** 分段控件的选中回调。 */
+    public interface Pick {
+        void onPick(int index);
+    }
+
+    /**
+     * 一排横向的单选分段（MD3 segmented button）：等宽分段，选中段是「容器里更亮的
+     * 小 pill」。三个互斥选项横着放，比纵向三行省一半高度。
+     *
+     * dotColors 不为空时给每段前面加一个该色小圆点（优先级的红/蓝/绿就是这么带出来的）。
+     */
+    public static View segmentedRow(Context c, String[] labels, int[] dotColors, int activeIndex,
+                                    final Pick onPick) {
+        final int activeBg = isDark(c) ? surfaceHighest(c) : surfaceLowest(c);
+        LinearLayout bar = row(c);
+        bar.setBackground(round(c, surfaceContainer(c), Color.TRANSPARENT, R_FULL, 0));
+        int pad = dp(c, 4);
+        bar.setPadding(pad, pad, pad, pad);
+
+        for (int i = 0; i < labels.length; i++) {
+            final int idx = i;
+            boolean active = i == activeIndex;
+
+            LinearLayout seg = row(c);
+            seg.setGravity(Gravity.CENTER);
+            seg.setLayoutParams(new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            seg.setPadding(0, dp(c, 10), 0, dp(c, 10));
+            seg.setMinimumHeight(dp(c, 44));
+            if (active) {
+                seg.setBackground(ripple(c, activeBg, R_FULL));
+                elevation(seg, 1f);
+            } else {
+                seg.setBackground(ripple(c, Color.TRANSPARENT, R_FULL));
+            }
+            seg.setClickable(true);
+            pressScale(seg);
+
+            if (dotColors != null && dotColors.length > i) {
+                View dot = new View(c);
+                dot.setBackground(circle(dotColors[i], dp(c, 7)));
+                LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(dp(c, 7), dp(c, 7));
+                dlp.rightMargin = dp(c, 6);
+                dot.setLayoutParams(dlp);
+                seg.addView(dot);
+            }
+            seg.addView(text(c, labels[i], T_BODY,
+                    active ? onSurface(c) : onSurfaceVariant(c), active));
+            seg.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { onPick.onPick(idx); }
+            });
+            bar.addView(seg);
+        }
+        return bar;
+    }
+
     // ================= 可选项列表行 =================
 
     /**
      * 可点选的一行（单选列表）：选中的那行高亮并带对勾。
      *
      * 原来有些地方要用户在输入框里敲 off / server / api、high / medium / low，还得写一段
-     * 校验去挡拼错；改成点选就没有拼错的可能，那段校验也不需要了。设置页和「新建待办」
-     * 的对话框都用这一个。
-     *
-     * dotColor 不为 0 时在标题前加一个该色的小圆点，用来和主页面进度条的颜色对上。
+     * 校验去挡拼错；改成点选就没有拼错的可能，那段校验也不需要了。设置页的「转写方式 /
+     * 接口协议 / 鉴权方式」都用这一个。
      */
     public static View optionRow(Context c, String label, String desc, boolean active,
-                                 int dotColor, final Runnable onClick) {
+                                 final Runnable onClick) {
         LinearLayout row = row(c);
         row.setPadding(dp(c, 16), dp(c, 12), dp(c, 16), dp(c, 12));
         row.setBackground(ripple(c, Color.TRANSPARENT, R_S));
@@ -499,15 +634,6 @@ public final class Ui {
         row.setFocusable(true);
         row.setMinimumHeight(dp(c, 52));
         pressScale(row);
-
-        if (dotColor != 0) {
-            View dot = new View(c);
-            dot.setBackground(circle(dotColor, dp(c, 8)));
-            LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(dp(c, 8), dp(c, 8));
-            dlp.rightMargin = dp(c, 10);
-            dot.setLayoutParams(dlp);
-            row.addView(dot);
-        }
 
         LinearLayout mid = column(c);
         mid.setLayoutParams(lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));

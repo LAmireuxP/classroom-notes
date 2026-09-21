@@ -164,8 +164,8 @@ public abstract class BaseSettingsActivity extends Activity {
      * 改成点选就没有拼错的可能了。
      */
     protected View optionRow(String label, String desc, boolean active, final Runnable onClick) {
-        // 具体的行画在 Ui.optionRow 里——「新建待办」的对话框也要用同一种行。
-        return Ui.optionRow(this, label, desc, active, 0, onClick);
+        // 具体的行画在 Ui.optionRow 里——「新建待办」的优先级横排也来自同一个设计系统层
+        return Ui.optionRow(this, label, desc, active, onClick);
     }
 
     /** 给「测试连接」提供完整配置：各协议的地址、鉴权、请求体都不一样。 */

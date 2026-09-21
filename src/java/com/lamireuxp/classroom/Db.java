@@ -412,11 +412,16 @@ public class Db extends SQLiteOpenHelper {
      * 用一条 GROUP BY 查出来再在 Java 里归类：库里可能留着历史数据，priority 是
      * NULL 或空串，那些按「中」算（与写入时的兜底一致）。要是按 high/medium/low
      * 查三次，这些行哪一段都不进，三段之和对不上总待办数。
+     *
+     * @param courseId 只统计某门课程；传 null 统计全部（主页面用）
      */
-    public int[][] todoByPriority() {
+    public int[][] todoByPriority(String courseId) {
         int[][] out = new int[3][2];
-        Cursor c = getReadableDatabase().rawQuery(
-                "SELECT priority, completed, COUNT(*) FROM todos GROUP BY priority, completed", null);
+        String sql = "SELECT priority, completed, COUNT(*) FROM todos"
+                + (courseId == null ? "" : " WHERE course_id=?")
+                + " GROUP BY priority, completed";
+        Cursor c = getReadableDatabase().rawQuery(sql,
+                courseId == null ? null : new String[]{courseId});
         try {
             while (c.moveToNext()) {
                 int i = priorityIndex(c.getString(0));
@@ -430,8 +435,13 @@ public class Db extends SQLiteOpenHelper {
         return out;
     }
 
+    /** 全部课程的待办统计。 */
+    public int[][] todoByPriority() {
+        return todoByPriority(null);
+    }
+
     /** 优先级 → 下标：high=0 / medium=1 / low=2；NULL、空串、脏值都按「中」算。 */
-    private static int priorityIndex(String p) {
+    public static int priorityIndex(String p) {
         if ("high".equals(p)) return 0;
         if ("low".equals(p)) return 2;
         return 1;

@@ -623,6 +623,15 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         summary.setLayoutParams(slp);
         content.addView(summary);
 
+        // 这门课的按优先级进度（只统计当前课程）。主页面那张卡是全部课程的口径，
+        // 两处用的是同一个 Ui.priorityProgress，样子和颜色一致。
+        LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        plp.bottomMargin = Ui.dp(this, 10);
+        View progress = Ui.priorityProgress(this, db.todoByPriority(courseId));
+        progress.setLayoutParams(plp);
+        content.addView(progress);
+
         boolean headerTodo = false, headerDone = false;
         for (Db.Todo t : todos) {
             if (!t.completed && !headerTodo) {
@@ -715,9 +724,8 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     }
 
     private String priorityLabel(String p) {
-        if ("high".equals(p)) return "高优先级";
-        if ("low".equals(p)) return "低优先级";
-        return "中优先级";
+        // 名字和颜色都归 Ui 管，进度条、图例、分段选项共用一份，免得各写一套
+        return Ui.priorityName(p);
     }
 
     /** 空状态要教学，而不只是"暂无"（operate.md 规范）。 */
@@ -824,19 +832,27 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         EditText dueField;
     }
 
-    private void renderTodoForm(LinearLayout box, TodoForm f) {
+    private void renderTodoForm(final LinearLayout box, final TodoForm f) {
         if (f.titleField != null) f.title = f.titleField.getText().toString();
         if (f.dueField != null) f.due = f.dueField.getText().toString();
         box.removeAllViews();
         f.titleField = formField(box, "任务内容", "完成第三章习题", f.title);
         f.dueField = formField(box, "截止日期", Dates.today(), f.due);
+
         formLabel(box, "优先级");
-        final Runnable rerender = new Runnable() {
-            @Override public void run() { renderTodoForm(box, f); }
-        };
-        box.addView(priorityOption("high", "最要紧的，先做这个", f, rerender));
-        box.addView(priorityOption("medium", "常规待办", f, rerender));
-        box.addView(priorityOption("low", "有空再说", f, rerender));
+        // 横排三段而不是纵向三行：三个互斥选项占一行，省一半高度。
+        // 圆点颜色与进度条、图例同源（Ui.priorityColor），选中的字色也会跟着变。
+        box.addView(Ui.segmentedRow(this, new String[]{"高", "中", "低"},
+                new int[]{Ui.priorityColor(this, "high"), Ui.priorityColor(this, "medium"),
+                        Ui.priorityColor(this, "low")},
+                Db.priorityIndex(f.priority), new Ui.Pick() {
+                    @Override public void onPick(int index) {
+                        String key = Db.PRIORITY_KEYS[index];
+                        if (key.equals(f.priority)) return;
+                        f.priority = key;
+                        renderTodoForm(box, f);
+                    }
+                }));
     }
 
     /** 对话框里的字段标签。 */
@@ -856,22 +872,6 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         if (value != null && value.length() > 0) et.setText(value);
         box.addView(et);
         return et;
-    }
-
-    /**
-     * 一行优先级选项。圆点颜色和主页面进度条、图例共用 Ui.priorityColor 那一份映射，
-     * 三处必须对得上——不然图例是红的、选项里是蓝的，颜色就白标了。
-     */
-    private View priorityOption(final String key, String desc, final TodoForm f,
-                                final Runnable rerender) {
-        return Ui.optionRow(this, priorityLabel(key), desc, key.equals(f.priority),
-                Ui.priorityColor(this, key), new Runnable() {
-                    @Override public void run() {
-                        if (key.equals(f.priority)) return;
-                        f.priority = key;
-                        rerender.run();
-                    }
-                });
     }
 
     private boolean saveTodo(TodoForm f) {
