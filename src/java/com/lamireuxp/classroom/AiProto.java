@@ -354,44 +354,55 @@ public final class AiProto {
         public final String model;
         /** 填不下的注意事项，选中后显示在页面上。 */
         public final String note;
+        /** 控制台地址：在这儿注册账号、创建 API Key。没有自带账号体系的（自建）留空。 */
+        public final String console;
 
-        Preset(String name, String endpoint, String protocol, String model, String note) {
+        Preset(String name, String endpoint, String protocol, String model, String note,
+               String console) {
             this.name = name;
             this.endpoint = endpoint;
             this.protocol = protocol;
             this.model = model;
             this.note = note;
+            this.console = console;
         }
     }
 
     public static List<Preset> presets() {
         List<Preset> l = new ArrayList<Preset>();
         l.add(new Preset("DeepSeek", "https://api.deepseek.com/v1", OPENAI, "deepseek-chat",
-                "国内可直连，OpenAI 兼容"));
+                "国内可直连，OpenAI 兼容", "https://platform.deepseek.com/"));
         l.add(new Preset("阿里通义千问", "https://dashscope.aliyuncs.com/compatible-mode/v1",
-                OPENAI, "qwen-plus", "兼容模式；想用原生 input/output 结构选下面那条"));
+                OPENAI, "qwen-plus", "兼容模式；想用原生 input/output 结构选下面那条",
+                "https://bailian.console.aliyun.com/"));
         l.add(new Preset("阿里通义（原生协议）", "https://dashscope.aliyuncs.com",
-                DASHSCOPE, "qwen-plus", "DashScope 原生接口：/api/v1/services/aigc/text-generation/generation"));
+                DASHSCOPE, "qwen-plus", "DashScope 原生接口：/api/v1/services/aigc/text-generation/generation",
+                "https://bailian.console.aliyun.com/"));
         l.add(new Preset("智谱 GLM", "https://open.bigmodel.cn/api/paas/v4", OPENAI,
-                "glm-4-flash", "有免费额度"));
+                "glm-4.7", "有免费额度；模型名会随版本变，用下面的「读取可用模型」挑",
+                "https://open.bigmodel.cn/"));
         l.add(new Preset("月之暗面 Kimi", "https://api.moonshot.cn/v1", OPENAI,
-                "moonshot-v1-8k", "长上下文，适合长笔记"));
+                "moonshot-v1-8k", "长上下文，适合长笔记", "https://platform.moonshot.cn/"));
         l.add(new Preset("腾讯混元", "https://api.hunyuan.cloud.tencent.com/v1", OPENAI,
-                "hunyuan-lite", ""));
+                "hunyuan-lite", "", "https://console.cloud.tencent.com/hunyuan"));
         l.add(new Preset("字节豆包（方舟）", "https://ark.cn-beijing.volces.com/api/v3", OPENAI, "",
-                "OpenAI 兼容，但模型要填控制台里的「接入点 ID」（ep- 开头），不是模型名"));
+                "OpenAI 兼容，但模型要填控制台里的「接入点 ID」（ep- 开头），不是模型名",
+                "https://console.volcengine.com/ark"));
         l.add(new Preset("讯飞星火", "https://spark-api-open.xf-yun.com/v1", OPENAI, "lite",
-                "Key 填控制台的 APIPassword；模型可选 lite / generalv3.5 / 4.0Ultra"));
+                "Key 填控制台的 APIPassword；模型可选 lite / generalv3.5 / 4.0Ultra",
+                "https://console.xfyun.cn/"));
         l.add(new Preset("百度千帆（新版）", "https://qianfan.baidubce.com/v2", OPENAI,
-                "ernie-4.0-turbo-8k", "OpenAI 兼容，一个 API Key 就够"));
+                "ernie-4.0-turbo-8k", "OpenAI 兼容，一个 API Key 就够", "https://console.bce.baidu.com/"));
         l.add(new Preset("百度文心（老接口）", "https://aip.baidubce.com", ERNIE, "ernie_speed",
-                "要 API Key + Secret Key 两个；模型名就是接口路径里的那段（ernie_speed / completions 等）"));
+                "要 API Key + Secret Key 两个；模型名就是接口路径里的那段（ernie_speed / completions 等）",
+                "https://console.bce.baidu.com/"));
         l.add(new Preset("硅基流动 SiliconFlow", "https://api.siliconflow.cn/v1", OPENAI,
-                "Qwen/Qwen2.5-7B-Instruct", "同一个 Key 还能跑转写（SenseVoice）"));
+                "Qwen/Qwen2.5-7B-Instruct", "同一个 Key 还能跑转写（SenseVoice）",
+                "https://cloud.siliconflow.cn/"));
         l.add(new Preset("OpenAI", "https://api.openai.com/v1", OPENAI, "gpt-4o-mini",
-                "需要能直连 OpenAI 的网络"));
+                "需要能直连 OpenAI 的网络", "https://platform.openai.com/"));
         l.add(new Preset("自建（Ollama / vLLM / one-api）", "http://192.168.1.10:11434/v1",
-                OPENAI, "qwen2.5", "局域网自建：地址改成你的 IP，明文 http 已在清单里放行"));
+                OPENAI, "qwen2.5", "局域网自建：地址改成你的 IP，明文 http 已在清单里放行", ""));
         return l;
     }
 

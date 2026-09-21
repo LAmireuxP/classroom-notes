@@ -6,6 +6,7 @@ import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.view.Gravity;
 
 /**
  * AI 总结设置 —— 独立界面（原来是 MainActivity 里的表单对话框）。
@@ -42,6 +43,7 @@ public class AiSettingsActivity extends BaseSettingsActivity {
 
         body.addView(sectionTitle("服务商"));
         body.addView(presetRow());
+        body.addView(keyGuideRow());
 
         body.addView(sectionTitle("接口协议"));
         String[] ids = AiProto.ids();
@@ -57,7 +59,7 @@ public class AiSettingsActivity extends BaseSettingsActivity {
                             cur.field = "";
                             cur.auth = "bearer";
                             note = "";
-                            applyTheme();
+                            rebuildFromState();
                         }
                     }));
         }
@@ -71,6 +73,7 @@ public class AiSettingsActivity extends BaseSettingsActivity {
                     cur.secret);
         }
         modelField = labeledField("模型", modelHint(), cur.model);
+        body.addView(modelPickButton());
 
         if (AiProto.CUSTOM.equals(cur.id)) {
             pathField = labeledField("请求路径", "/v1/chat/completions（可带查询参数）", cur.path);
@@ -100,6 +103,156 @@ public class AiSettingsActivity extends BaseSettingsActivity {
         body.addView(saveButton("保存", new Runnable() {
             @Override public void run() { save(); }
         }));
+    }
+
+    /** 「怎么申请 API Key」一行：点开一张厂商清单，点一行用浏览器打开对应控制台。 */
+    private View keyGuideRow() {
+        LinearLayout row = Ui.row(this);
+        row.setPadding(Ui.dp(this, 16), Ui.v(this, 12), Ui.dp(this, 16), Ui.v(this, 12));
+        row.setBackground(Ui.ripple(this, android.graphics.Color.TRANSPARENT, Ui.R_S));
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setMinimumHeight(Ui.vMin(this, 52));
+        Ui.pressScale(row);
+
+        LinearLayout mid = Ui.column(this);
+        mid.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        mid.addView(Ui.text(this, "还没有 API Key？", Ui.T_BODY + 1, Ui.primary(this), true));
+        mid.addView(Ui.text(this, "看各家怎么申请，点一下直接去控制台",
+                Ui.T_LABEL, Ui.onSurfaceVariant(this), false));
+        row.addView(mid);
+
+        android.widget.ImageView chevron =
+                Icons.icon(this, R.drawable.ic_chevron_down, Ui.onSurfaceVariant(this), 16);
+        chevron.setRotation(-90f);
+        row.addView(chevron);
+
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showKeyGuide(); }
+        });
+        return row;
+    }
+
+    /**
+     * 申请指引：按厂商列出控制台地址。地址只写控制台首页（深链几个月就可能变，
+     * 首页稳定，从首页进「API Key」页也只是多点一下）。
+     */
+    private void showKeyGuide() {
+        LinearLayout box = Ui.column(this);
+        box.addView(hint("在厂商控制台注册账号、创建 API Key（通常叫「密钥管理」或 API Keys），"
+                + "把生成的字符串粘到上面的 API Key 框里。用哪个厂商就点哪一行："));
+        java.util.List<AiProto.Preset> ps = AiProto.presets();
+        for (int i = 0; i < ps.size(); i++) {
+            final AiProto.Preset p = ps.get(i);
+            if (p.console.length() == 0) continue;   // 自建服务没有控制台
+            box.addView(Ui.optionRow(this, p.name, p.console, false, new Runnable() {
+                @Override public void run() { openUrl(p.console); }
+            }));
+        }
+        box.addView(hint("申请下来的 Key 只存在这台手机上（应用的私有设置里），"
+                + "不会上传到任何地方；但它等同于账号密码，别发到群里或贴进公开仓库。"));
+        Dialogs.sheet(this, "怎么申请 API Key", box);
+    }
+
+    private void openUrl(String url) {
+        try {
+            startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse(url)));
+        } catch (Throwable e) {
+            Tip.error(this, "打不开浏览器，地址是 " + url);
+        }
+    }
+
+    /** 「读取可用模型」：问服务端要清单，选一个填进模型框。 */
+    private View modelPickButton() {
+        TextView btn = Ui.textButton(this, "读取可用模型");
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = Ui.v(this, 6);
+        btn.setLayoutParams(lp);
+        btn.setMinHeight(Ui.vMin(this, 44));
+        btn.setGravity(Gravity.CENTER);
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showModelPicker(); }
+        });
+        return btn;
+    }
+
+    private void showModelPicker() {
+        final AiProto.Cfg cfg = cfg();
+        if (cfg.endpoint.trim().length() == 0) {
+            Tip.error(this, "先填写 API 地址");
+            return;
+        }
+        // 先把抽屉开出来（显示「读取中」），拿到清单再填进去——网络往返一两秒，
+        // 干等一个 Tip 不如让人看见抽屉已经在动了
+        final LinearLayout box = Ui.column(this);
+        box.addView(hint("正在读取 " + AiProto.base(cfg.endpoint) + "/models …"));
+        final AlertDialog dlg = Dialogs.sheet(this, "选择模型", box);
+
+        new Thread(new Runnable() {
+            @Override public void run() {
+                java.util.List<String> models = null;
+                String err = null;
+                try {
+                    models = Net.listModels(cfg);
+                } catch (Throwable e) {
+                    err = Net.humanize(e);
+                }
+                final java.util.List<String> fm = models;
+                final String fe = err;
+                runOnUiThread(new Runnable() {
+                    @Override public void run() { fillModelSheet(box, dlg, fm, fe); }
+                });
+            }
+        }).start();
+    }
+
+    private void fillModelSheet(final LinearLayout box, final AlertDialog dlg,
+                                final java.util.List<String> models, String err) {
+        box.removeAllViews();
+        if (models == null) {
+            box.addView(hint("读取失败：" + err));
+            box.addView(hint("也可以按服务商文档直接把模型名填进「模型」框。"));
+            return;
+        }
+
+        // 过滤框：厂商清单可能上百条（中转站尤其），纯滚动找太费劲
+        final EditText filter = Ui.input(this, "过滤模型名…");
+        box.addView(filter);
+        box.addView(hint("共 " + models.size() + " 个可用模型，点一个填进模型框"));
+        final LinearLayout list = Ui.column(this);
+        box.addView(list);
+
+        final Runnable render = new Runnable() {
+            @Override public void run() {
+                list.removeAllViews();
+                String q = filter.getText().toString().trim().toLowerCase();
+                int shown = 0;
+                for (int i = 0; i < models.size(); i++) {
+                    final String id = models.get(i);
+                    if (q.length() > 0 && id.toLowerCase().indexOf(q) < 0) continue;
+                    shown++;
+                    boolean active = modelField != null
+                            && id.equals(modelField.getText().toString().trim());
+                    list.addView(Ui.optionRow(AiSettingsActivity.this, id, null, active,
+                            new Runnable() {
+                                @Override public void run() {
+                                    if (modelField != null) modelField.setText(id);
+                                    dlg.dismiss();
+                                    Tip.success(AiSettingsActivity.this, "模型已选：" + id);
+                                }
+                            }));
+                }
+                if (shown == 0) list.addView(hint("没有匹配的模型"));
+            }
+        };
+        filter.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) { render.run(); }
+        });
+        render.run();
     }
 
     /** 一段说明文字，比正文小一号。 */
@@ -169,7 +322,7 @@ public class AiSettingsActivity extends BaseSettingsActivity {
         cur.field = "";
         cur.auth = "bearer";
         note = p.note;
-        applyTheme();
+        rebuildFromState();
         Tip.success(this, "已填入「" + p.name + "」预设");
     }
 
@@ -217,6 +370,21 @@ public class AiSettingsActivity extends BaseSettingsActivity {
         return et == null ? fallback : et.getText().toString();
     }
 
+    /**
+     * 已经手动把界面值收进内存、并且改过内存值之后，重建时**不要**再 capture 一次。
+     *
+     * 起因：套用预设原来是「capture → 改 cur → applyTheme」，而 applyTheme 里又会
+     * capture 一次——那一刻界面还是旧值，于是刚设好的地址/模型被旧值原样盖回去，
+     * 表现就是「点了预设但什么都没发生」。协议切换也有同样的问题（旧路径会被带回来）。
+     */
+    private boolean skipCaptureOnce;
+
+    /** 改完内存里的值要重建界面时走这个：跳过那一次 capture。 */
+    private void rebuildFromState() {
+        skipCaptureOnce = true;
+        applyTheme();
+    }
+
     /** 换主题或切协议会重建整个 body，输入到一半的内容不能丢。 */
     private void capture() {
         AiProto.Cfg g = cfg();
@@ -230,7 +398,8 @@ public class AiSettingsActivity extends BaseSettingsActivity {
     }
 
     @Override protected void applyTheme() {
-        capture();
+        if (skipCaptureOnce) skipCaptureOnce = false;
+        else capture();
         super.applyTheme();
     }
 

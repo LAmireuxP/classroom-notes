@@ -10,6 +10,8 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 /** 网络层：AI 总结 + 云转写。纯 HttpURLConnection，无需第三方库。 */
@@ -295,6 +297,52 @@ public final class Net {
         if (err != null) throw new Exception(err);
         if (AiProto.extract(cfg, data).length() == 0) throw new Exception(noContent(data));
         return "服务在线，模型有回应";
+    }
+
+    /**
+     * 读服务端可用的模型清单（GET /models），按名字排序。
+     *
+     * 配好地址和 Key 之后直接选一个，比照着文档手敲强：厂商的模型名过几个月就可能下架
+     * （智谱的 glm-4-flash 现在就查不到了），手敲的名字要到总结失败才发现。
+     *
+     * 通义原生、百度文心这类没有 /models 的服务会在 404 上失败，调用方提示手填即可。
+     */
+    public static List<String> listModels(AiProto.Cfg cfg) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection)
+                new URL(AiProto.base(cfg.endpoint) + "/models").openConnection();
+        try {
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(30000);
+            if (cfg.key.trim().length() > 0) {
+                conn.setRequestProperty("Authorization", "Bearer " + cfg.key.trim());
+            }
+            int code = conn.getResponseCode();
+            String resp = readAll(code >= 400 ? conn.getErrorStream() : conn.getInputStream());
+            if (code >= 400) {
+                if (code == 404) {
+                    throw new Exception("这个服务没有 /models 接口，模型名只能手填"
+                            + "（通义原生、百度文心就是这种情况）");
+                }
+                throw new Exception(friendlyError(code, resp));
+            }
+            JSONObject o = toJson(resp);
+            JSONArray data = o.optJSONArray("data");
+            List<String> out = new ArrayList<String>();
+            if (data != null) {
+                for (int i = 0; i < data.length(); i++) {
+                    JSONObject m = data.optJSONObject(i);
+                    if (m == null) continue;
+                    String id = m.optString("id", "").trim();
+                    if (id.length() > 0) out.add(id);
+                }
+            }
+            if (out.isEmpty()) throw new Exception("服务返回的模型清单是空的");
+            Collections.sort(out);
+            return out;
+        } finally {
+            conn.disconnect();
+        }
     }
 
     /** 换 token 这类简单 GET。 */
