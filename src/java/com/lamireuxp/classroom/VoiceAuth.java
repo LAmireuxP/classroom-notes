@@ -45,12 +45,30 @@ public final class VoiceAuth {
     private static final String ACTION_VOICE_INPUT_SETTINGS = "android.settings.VOICE_INPUT_SETTINGS";
 
     /**
+     * 小米识别服务自己的授权弹窗（实测 dumpsys：导出，带这个 action 的 intent-filter）。
+     * adb `am start -a com.xiaomi.mibrain.speech.cta` 验证过能被外部拉起来——
+     * 与其让用户去小爱同学里自己翻，不如直接把该翻的那一页拉到他面前。
+     */
+    private static final String XIAOMI_ASR_PKG = "com.xiaomi.mibrain.speech";
+    private static final String XIAOMI_ASR_CTA = "com.xiaomi.mibrain.speech.cta";
+
+    /**
      * 打开最可能是「识别放行开关」的地方。
      *
      * @return 是否成功打开了某个界面。false 说明这台设备上一条都没找到，
      *         调用方应该改为引导用户开云端转写。
      */
     public static boolean open(Context c) {
+        // 1) 小米：直接拉识别服务自带的授权弹窗
+        try {
+            Intent cta = new Intent(XIAOMI_ASR_CTA);
+            cta.setPackage(XIAOMI_ASR_PKG);
+            cta.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            c.startActivity(cta);
+            return true;
+        } catch (Throwable ignored) {
+        }
+        // 2) 厂商语音助手主页
         PackageManager pm = c.getPackageManager();
         for (String pkg : ASSISTANTS) {
             try {
@@ -63,6 +81,7 @@ public final class VoiceAuth {
                 // 包在但起不来（被禁用/被冻结）就继续试下一个
             }
         }
+        // 3) 系统语音输入设置页兜底
         try {
             Intent it = new Intent(ACTION_VOICE_INPUT_SETTINGS);
             it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);

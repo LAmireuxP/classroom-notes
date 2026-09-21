@@ -52,6 +52,49 @@ public class TsSettingsActivity extends BaseSettingsActivity {
         body.addView(saveButton("保存", new Runnable() {
             @Override public void run() { save(); }
         }));
+
+        // 常驻的授权入口：识别被厂商拦下时录音页会弹引导，但用户也可能当时点了「稍后」，
+        // 之后想自己弄就得能找到地方——没有这个入口，这条路实际上等于只响一次。
+        body.addView(sectionTitle("系统语音识别授权"));
+        body.addView(Ui.text(this,
+                "小米 / OPPO / vivo 等机型要求先在厂商语音助手里同意「跨应用识别」，"
+                        + "只给麦克风权限不够。点下面按钮打开授权页，同意一次后重新录音即可实时出字。",
+                Ui.T_LABEL, Ui.onSurfaceVariant(this), false));
+        body.addView(authRow());
+    }
+
+    /** 「打开授权页」一行：依次尝试厂商识别服务的授权页、语音助手、系统语音设置。 */
+    private View authRow() {
+        LinearLayout row = Ui.row(this);
+        row.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 12));
+        row.setBackground(Ui.ripple(this, Color.TRANSPARENT, Ui.R_S));
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setMinimumHeight(Ui.dp(this, 52));
+        Ui.pressScale(row);
+
+        LinearLayout mid = Ui.column(this);
+        mid.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        mid.addView(Ui.text(this, "打开厂商授权页", Ui.T_BODY + 1, Ui.primary(this), true));
+        mid.addView(Ui.text(this, "小米会直接拉起小爱同学识别服务的授权弹窗",
+                Ui.T_LABEL, Ui.onSurfaceVariant(this), false));
+        row.addView(mid);
+        android.widget.ImageView chevron =
+                Icons.icon(this, R.drawable.ic_chevron_down, Ui.onSurfaceVariant(this), 16);
+        chevron.setRotation(-90f);   // 下箭头转 90° = 「进入」的 >，和设置页其它行一致
+        row.addView(chevron);
+
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                // 手动来过这条路，就把「被拦下」标记清掉——下次录音重新试系统识别
+                SpeechSession.clearRecognizeBlocked();
+                if (!VoiceAuth.open(TsSettingsActivity.this)) {
+                    Tip.error(TsSettingsActivity.this,
+                            "这台设备没找到语音助手 / 授权页，可改用云端转写");
+                }
+            }
+        });
+        return row;
     }
 
     /** 切换方式会改变下面显示的字段，所以要点完重建一次 body。 */

@@ -51,6 +51,8 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     private String query = "";
     private String expandedNoteId = null;
     private AlertDialog submitDialog;
+    /** 厂商授权引导框正开着——同一次录音里连续报错只弹一次。 */
+    private boolean consentGuideShowing;
 
     private SpeechSession speech;
     private Handler ticker;
@@ -854,6 +856,8 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     private void reallyStartRecording() {
         final String mode = Prefs.tsMode(this);
         final boolean recordAudio = !"off".equals(mode);
+        // 新一轮录音：授权引导框可以再弹一次（点了「稍后」又继续录的用户，不该被永久免打扰）
+        consentGuideShowing = false;
 
         speech = new SpeechSession(this, new SpeechSession.Listener() {
             @Override public void onPartial(String text) {
@@ -879,17 +883,15 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
              *
              *  - 识别被厂商拦下（小米 CTA / 机型白名单这类）时，「去设置」是死路——
              *    系统设置里根本没有能让第三方 App 通过的开关。这种设备唯一可能恢复
-             *    实时识别的是去厂商语音助手里同意一次「跨应用识别」，所以入口给到那边。
+             *    实时识别的是同意一次厂商的「跨应用识别」协议，所以直接弹引导框、
+             *    一键把授权页拉起来（见 showConsentGuide）。
              *  - 只是缺服务 / 服务没配好时，才把用户送去开云端转写。
              *
              * 两条都没有的普通错误就只报错，不硬塞一个点了没用的按钮。
              */
             @Override public void onError(String message, boolean fatal, boolean cloudFallback) {
                 if (SpeechSession.recognizeBlocked()) {
-                    Tip.errorAction(CourseActivity.this, message, "去授权",
-                            new Runnable() {
-                                @Override public void run() { openVoiceAuth(); }
-                            });
+                    showConsentGuide();
                 } else if (cloudFallback) {
                     Tip.errorAction(CourseActivity.this, message, "去设置",
                             new Runnable() {
@@ -1047,10 +1049,34 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     }
 
     /**
-     * 去厂商语音助手 / 系统「语音输入」设置里同意「跨应用识别」。
-     * 一条都没找到时说清下一步，别让用户对着一个没反应的按钮发呆。
+     * 被厂商拦下时主动弹出的授权引导框。
+     *
+     * 之前只是把「去授权」挂在一个 6 秒就消失的提示条上——用户没注意就过去了，
+     * 换设备时等于功能直接坏掉。授权是恢复实时识别的**唯一**出路，必须用模态框
+     * 挡在用户面前让他二选一，而不是赌他看得见小提示。
+     *
+     * 每次开始录音重置一次，保证「点了取消 → 再录 → 再问」还能出现，
+     * 但同一次录音里连续多个错误只弹一次。
+     */
+    private void showConsentGuide() {
+        if (consentGuideShowing) return;
+        consentGuideShowing = true;
+        Dialogs.confirm(this, "语音识别被系统拦住了",
+                "这台设备的语音识别要求先同意「跨应用识别」隐私协议（小米：小爱同学），"
+                        + "只给麦克风权限不够。\n\n「去同意」会打开厂商的授权页面；"
+                        + "暂时不弄的话，本次仍能录音，结束后走云端转写出文字。",
+                "去同意", new Runnable() {
+                    @Override public void run() { openVoiceAuth(); }
+                });
+    }
+
+    /**
+     * 去厂商授权页。拉起来就清掉「被拦下」标记——授权很可能就在这一步完成，
+     * 回来后再点录音必须重新试一次系统识别，不能被一次旧失败永久堵死。
+     * 一条入口都没找到时说清下一步，别让用户对着没反应的按钮发呆。
      */
     private void openVoiceAuth() {
+        SpeechSession.clearRecognizeBlocked();
         if (!VoiceAuth.open(this)) {
             Tip.error(this, "没找到语音助手的入口，可用「设置 → 语音转写设置」改用云端转写");
         }

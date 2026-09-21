@@ -115,6 +115,15 @@ public class SpeechSession {
     }
 
     /**
+     * 清除「被拦下」标记：把用户送去走授权流程之后调它。
+     * 授权可能就在刚刚这一步完成，下次录音必须重新试一次系统识别，
+     * 而不是拿一次旧的失败把这条路永久堵死。
+     */
+    public static void clearRecognizeBlocked() {
+        sRecognizeBlocked = false;
+    }
+
+    /**
      * 进程级「这台设备/这套识别服务已经放行过本 App 吗」。
      *
      * 起因：澎湃 OS 4 的小米 AsrService 里有个 CTA / 设备型号白名单（isCTAAllow），

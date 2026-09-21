@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.lamireuxp.classroom"
-    android:versionCode="5"
-    android:versionName="1.2.2">
+    android:versionCode="6"
+    android:versionName="1.2.3">
 
     <uses-sdk android:minSdkVersion="22" android:targetSdkVersion="33" />
 
@@ -38,6 +38,10 @@
         <package android:name="com.samsung.android.bixby.agent" />
         <intent>
             <action android:name="android.settings.VOICE_INPUT_SETTINGS" />
+        </intent>
+        <!-- 小米识别服务自带的授权弹窗（VoiceAuth 第一优先拉它，见实测） -->
+        <intent>
+            <action android:name="com.xiaomi.mibrain.speech.cta" />
         </intent>
     </queries>
 
