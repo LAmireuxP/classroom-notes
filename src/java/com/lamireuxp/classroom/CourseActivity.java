@@ -796,35 +796,102 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                 });
     }
 
+    /**
+     * 新建待办。优先级是点选而不是手输——原来要在输入框里敲 high / medium / low，
+     * 敲错一个字母会被静默改写成「中优先级」（那段校验只是把它改掉，用户并不知道自己写错了），
+     * 而且高/中/低那套颜色也没法在输入框里表达。
+     */
     private void todoDialog() {
-        Dialogs.form(this, "新建待办",
-                new String[]{"任务内容", "截止日期", "优先级（high / medium / low）"},
-                new String[]{"完成第三章习题", Dates.today(), "medium"},
-                new String[]{"", Dates.today(), "medium"},
-                new boolean[]{false, false, false},
-                new Dialogs.OnSubmit() {
-                    @Override public void onSubmit(EditText[] f) {
-                        String title = f[0].getText().toString().trim();
-                        if (title.length() == 0) {
-                            Tip.error(CourseActivity.this, "请填写任务内容");
-                            return;
-                        }
-                        String p = f[2].getText().toString().trim();
-                        if (!p.equals("high") && !p.equals("medium") && !p.equals("low")) p = "medium";
-                        Db.Todo t = new Db.Todo();
-                        t.id = Id.gen();
-                        t.courseId = courseId;
-                        t.title = title;
-                        t.due = f[1].getText().toString().trim();
-                        t.priority = p;
-                        db.saveTodo(t);
-                        if (submitDialog != null) submitDialog.dismiss();
-                        submitDialog = null;
-                        renderTabs();
-                        renderContent();
-                        Tip.success(CourseActivity.this, "待办已创建");
+        final LinearLayout box = Ui.column(this);
+        final TodoForm form = new TodoForm();
+        final Runnable render = new Runnable() {
+            @Override public void run() { renderTodoForm(box, form); }
+        };
+        render.run();
+
+        final AlertDialog dlg = Dialogs.form(this, "新建待办", box, "保存", new Dialogs.Saver() {
+            @Override public boolean save() { return saveTodo(form); }
+        });
+        Dialogs.focusFirst(dlg, true);
+    }
+
+    /** 新建待办的表单状态。点优先级会重建表单，已填的内容得先活在这里。 */
+    private static final class TodoForm {
+        String title = "";
+        String due = Dates.today();
+        String priority = "medium";
+        EditText titleField;
+        EditText dueField;
+    }
+
+    private void renderTodoForm(LinearLayout box, TodoForm f) {
+        if (f.titleField != null) f.title = f.titleField.getText().toString();
+        if (f.dueField != null) f.due = f.dueField.getText().toString();
+        box.removeAllViews();
+        f.titleField = formField(box, "任务内容", "完成第三章习题", f.title);
+        f.dueField = formField(box, "截止日期", Dates.today(), f.due);
+        formLabel(box, "优先级");
+        final Runnable rerender = new Runnable() {
+            @Override public void run() { renderTodoForm(box, f); }
+        };
+        box.addView(priorityOption("high", "最要紧的，先做这个", f, rerender));
+        box.addView(priorityOption("medium", "常规待办", f, rerender));
+        box.addView(priorityOption("low", "有空再说", f, rerender));
+    }
+
+    /** 对话框里的字段标签。 */
+    private void formLabel(LinearLayout box, String text) {
+        TextView lb = Ui.text(this, text, Ui.T_LABEL, Ui.onSurfaceVariant(this), true);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = Ui.dp(this, 16);
+        lp.bottomMargin = Ui.dp(this, 6);
+        lb.setLayoutParams(lp);
+        box.addView(lb);
+    }
+
+    private EditText formField(LinearLayout box, String label, String hint, String value) {
+        formLabel(box, label);
+        EditText et = Ui.input(this, hint);
+        if (value != null && value.length() > 0) et.setText(value);
+        box.addView(et);
+        return et;
+    }
+
+    /**
+     * 一行优先级选项。圆点颜色和主页面进度条、图例共用 Ui.priorityColor 那一份映射，
+     * 三处必须对得上——不然图例是红的、选项里是蓝的，颜色就白标了。
+     */
+    private View priorityOption(final String key, String desc, final TodoForm f,
+                                final Runnable rerender) {
+        return Ui.optionRow(this, priorityLabel(key), desc, key.equals(f.priority),
+                Ui.priorityColor(this, key), new Runnable() {
+                    @Override public void run() {
+                        if (key.equals(f.priority)) return;
+                        f.priority = key;
+                        rerender.run();
                     }
                 });
+    }
+
+    private boolean saveTodo(TodoForm f) {
+        String title = f.titleField.getText().toString().trim();
+        if (title.length() == 0) {
+            Tip.error(this, "请填写任务内容");
+            return false;   // false = 不关窗，刚填的内容还在
+        }
+        Db.Todo todo = new Db.Todo();
+        todo.id = Id.gen();
+        todo.courseId = courseId;
+        todo.title = title;
+        todo.due = f.dueField.getText().toString().trim();
+        todo.priority = f.priority;
+        db.saveTodo(todo);
+        submitDialog = null;
+        renderTabs();
+        renderContent();
+        Tip.success(this, "待办已创建");
+        return true;
     }
 
     // ================== 录音 ==================

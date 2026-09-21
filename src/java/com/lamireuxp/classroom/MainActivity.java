@@ -362,29 +362,101 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         line.addView(inlineLabel(" 待办完成"));
         card.addView(line);
 
-        // 进度条（细线，表达状态而非装饰）
+        // 进度条：整条宽度 = 全部待办，按优先级切成三段，每段自己显示完成度。
+        // 原来是一条 primary 单色进度线，只说得出总完成度，看不出没做完的那部分
+        // 压在哪个优先级上——而「高中低」才是待办最该被看见的维度。
         if (total > 0) {
-            int pct = Math.round(done * 100f / total);
-            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 4));
-            bp.topMargin = Ui.dp(this, 12);
-
-            LinearLayout track = new LinearLayout(this);
-            track.setLayoutParams(bp);
-            track.setBackground(Ui.round(this, Ui.outlineVariant(this), Color.TRANSPARENT,
-                    Ui.R_FULL, 0));
-
-            View fill = new View(this);
-            LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(
-                    0, ViewGroup.LayoutParams.MATCH_PARENT,
-                    Math.max(0.001f, pct / 100f));
-            fill.setLayoutParams(fp);
-            fill.setBackground(Ui.round(this, Ui.primary(this), Color.TRANSPARENT, Ui.R_FULL, 0));
-            track.addView(fill);
-            card.addView(track);
+            int[][] byP = db.todoByPriority();
+            card.addView(priorityBar(byP));
+            card.addView(priorityLegend(byP));
         }
 
         return card;
+    }
+
+    /**
+     * 三段进度条：一段一个优先级，颜色区分（高=error 红 / 中=primary / 低=success 绿）。
+     * 段宽 = 该优先级的待办占比（三段合起来正好是全部待办），段内实心部分 = 已完成的占比，
+     * 底槽用同色的浅版。段间留 2dp 缝，看得出是三段而不是一条渐变。
+     */
+    private View priorityBar(int[][] byP) {
+        LinearLayout bar = Ui.row(this);
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 6));
+        bp.topMargin = Ui.dp(this, 12);
+        bar.setLayoutParams(bp);
+
+        boolean first = true;
+        for (int i = 0; i < 3; i++) {
+            int segTotal = byP[i][0];
+            if (segTotal == 0) continue;          // 这个优先级没有待办就不占宽度
+            int color = priorityColor(i);
+
+            LinearLayout seg = new LinearLayout(this);
+            LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.MATCH_PARENT, segTotal);
+            if (!first) sp.leftMargin = Ui.dp(this, 2);
+            first = false;
+            seg.setLayoutParams(sp);
+            seg.setBackground(Ui.round(this, Ui.withAlpha(color, 0.18f),
+                    Color.TRANSPARENT, Ui.R_FULL, 0));
+
+            // 完成度用「已完成 / 未完成」两个带权重的子 View 表示。
+            // 不能只放一个权重为完成比的 fill：LinearLayout 是按**权重之和**分配剩余空间的，
+            // 独苗子 View 无论权重多小都会吃掉整段——原来那条单色进度线就是这么写的，
+            // 所以它不管完成多少都画成满格（1/2 也是满的）。
+            View donePart = new View(this);
+            donePart.setLayoutParams(new LinearLayout.LayoutParams(
+                    0, ViewGroup.LayoutParams.MATCH_PARENT, byP[i][1]));
+            donePart.setBackground(Ui.round(this, color, Color.TRANSPARENT, Ui.R_FULL, 0));
+            seg.addView(donePart);
+
+            int rest = segTotal - byP[i][1];
+            if (rest > 0) {
+                View restPart = new View(this);   // 透明，露出同色的浅底槽
+                restPart.setLayoutParams(new LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.MATCH_PARENT, rest));
+                seg.addView(restPart);
+            }
+            bar.addView(seg);
+        }
+        return bar;
+    }
+
+    /** 图例：三个颜色不写清楚没人猜得到含义，「高 1/2」把颜色和优先级对上。 */
+    private View priorityLegend(int[][] byP) {
+        String[] names = {"高", "中", "低"};
+        LinearLayout row = Ui.row(this);
+        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rp.topMargin = Ui.dp(this, 8);
+        row.setLayoutParams(rp);
+
+        for (int i = 0; i < 3; i++) {
+            if (byP[i][0] == 0) continue;
+            if (row.getChildCount() > 0) {
+                View gap = new View(this);
+                gap.setLayoutParams(Ui.lp(Ui.dp(this, 14), 1));
+                row.addView(gap);
+            }
+            View dot = new View(this);
+            dot.setBackground(Ui.circle(priorityColor(i), Ui.dp(this, 6)));
+            LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(
+                    Ui.dp(this, 6), Ui.dp(this, 6));
+            dp.rightMargin = Ui.dp(this, 5);
+            dp.gravity = Gravity.CENTER_VERTICAL;
+            dot.setLayoutParams(dp);
+            row.addView(dot);
+            row.addView(Ui.text(this, names[i] + " " + byP[i][1] + "/" + byP[i][0],
+                    Ui.T_LABEL, Ui.onSurfaceVariant(this), false));
+        }
+        return row;
+    }
+
+    /** 优先级配色：查 Ui 里那一份映射（高=红 / 中=主题色 / 低=绿），
+     * 「新建待办」的选项行用的是同一份，改色只改一处。 */
+    private int priorityColor(int idx) {
+        return Ui.priorityColor(this, Db.PRIORITY_KEYS[idx]);
     }
 
     private TextView inlineNum(String s) {

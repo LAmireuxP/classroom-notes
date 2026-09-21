@@ -207,6 +207,27 @@ public final class Ui {
         public static int inverseSurface(Context c) { return tone(c, "inverse_surface"); }
     public static int inverseOnSurface(Context c) { return tone(c, "inverse_on_surface"); }
 
+    /**
+     * 同一颜色调成半透明。进度条拿它画底槽：用「自己那一档颜色的浅版」而不是灰槽，
+     * 一眼能看出这一段属于哪个优先级、还差多少没做完。
+     */
+    public static int withAlpha(int color, float f) {
+        int a = Math.round(255 * Math.max(0f, Math.min(1f, f)));
+        return (color & 0x00FFFFFF) | (a << 24);
+    }
+
+    /**
+     * 优先级的语义色：高 = error 红，中 = primary 主题色，低 = success 绿。
+     *
+     * 主页面进度条、它的图例、以及「新建待办」的优先级选项共用这一份映射——
+     * 图例上的红点要和选项里的红点对得上，两边各写一套迟早会走偏。
+     */
+    public static int priorityColor(Context c, String priority) {
+        if ("high".equals(priority)) return error(c);
+        if ("low".equals(priority)) return tone(c, "success");
+        return primary(c);
+    }
+
     // ================= 形状 / 背景 =================
 
     public static GradientDrawable round(Context c, int fillColor, int strokeColor,
@@ -458,4 +479,58 @@ public final class Ui {
         return v;
     }
 
+    // ================= 可选项列表行 =================
+
+    /**
+     * 可点选的一行（单选列表）：选中的那行高亮并带对勾。
+     *
+     * 原来有些地方要用户在输入框里敲 off / server / api、high / medium / low，还得写一段
+     * 校验去挡拼错；改成点选就没有拼错的可能，那段校验也不需要了。设置页和「新建待办」
+     * 的对话框都用这一个。
+     *
+     * dotColor 不为 0 时在标题前加一个该色的小圆点，用来和主页面进度条的颜色对上。
+     */
+    public static View optionRow(Context c, String label, String desc, boolean active,
+                                 int dotColor, final Runnable onClick) {
+        LinearLayout row = row(c);
+        row.setPadding(dp(c, 16), dp(c, 12), dp(c, 16), dp(c, 12));
+        row.setBackground(ripple(c, Color.TRANSPARENT, R_S));
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setMinimumHeight(dp(c, 52));
+        pressScale(row);
+
+        if (dotColor != 0) {
+            View dot = new View(c);
+            dot.setBackground(circle(dotColor, dp(c, 8)));
+            LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(dp(c, 8), dp(c, 8));
+            dlp.rightMargin = dp(c, 10);
+            dot.setLayoutParams(dlp);
+            row.addView(dot);
         }
+
+        LinearLayout mid = column(c);
+        mid.setLayoutParams(lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        mid.addView(text(c, label, T_BODY + 1, active ? primary(c) : onSurface(c), active));
+        if (desc != null && desc.length() > 0) {
+            mid.addView(text(c, desc, T_LABEL, onSurfaceVariant(c), false));
+        }
+        row.addView(mid);
+
+        // 对勾固定 18dp 宽放在行尾，配合 mid 的 weight=1 把文字挤压换行，
+        // 不会出现两行说明盖到图标下面
+        if (active) {
+            ImageView check = Icons.icon(c, R.drawable.ic_check, primary(c), 18);
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(dp(c, 18), dp(c, 18));
+            clp.leftMargin = dp(c, 12);
+            clp.gravity = Gravity.CENTER_VERTICAL;
+            check.setLayoutParams(clp);
+            row.addView(check);
+        }
+
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { onClick.run(); }
+        });
+        return row;
+    }
+}

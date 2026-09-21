@@ -251,12 +251,50 @@ public final class Dialogs {
 
     public static AlertDialog content(Activity a, String title, View body,
                                       String okText, final Runnable onOk) {
+        Shell s = shell(a, title, body);
+        addCancel(s, "关闭");
+        if (okText != null && onOk != null) {
+            addOk(s, okText, new Saver() {
+                @Override public boolean save() { onOk.run(); return true; }
+            });
+        }
+        return s.dlg;
+    }
+
+    /** 表单的保存回调：返回 true 表示校验通过、数据已写入，可以关窗了。 */
+    public interface Saver {
+        boolean save();
+    }
+
+    /**
+     * 表单对话框：body 由调用方拼——可以放输入框，也可以放选择行（新建待办的优先级就是），
+     * 比上面那个数组版灵活。底部是「取消 / 保存」。
+     *
+     * 与 content() 的差别在按钮语义：**保存不先关窗**，由回调说了算。校验没过时对话框还在，
+     * 用户刚填的内容不会因为点早了一下就丢掉。
+     */
+    public static AlertDialog form(Activity a, String title, View body, String okText,
+                                   final Saver onSave) {
+        Shell s = shell(a, title, body);
+        addCancel(s, "取消");
+        addOk(s, okText, onSave);
+        if (a instanceof DialogHost) ((DialogHost) a).setSubmitDialog(s.dlg);
+        return s.dlg;
+    }
+
+    /** 对话框外壳：标题 + 可滚动内容 + 底部按钮行（按钮由调用方往 foot 里加）。 */
+    private static final class Shell {
+        AlertDialog dlg;
+        LinearLayout foot;
+    }
+
+    private static Shell shell(Activity a, String title, View body) {
         Context c = a;
-        AlertDialog dlg = new AlertDialog.Builder(a).create();
+        Shell s = new Shell();
+        s.dlg = new AlertDialog.Builder(a).create();
 
         LinearLayout root = dialogRoot(c);
-        TextView t = Ui.text(c, title, Ui.T_HEADLINE, Ui.onSurface(c), true);
-        root.addView(t);
+        root.addView(Ui.text(c, title, Ui.T_HEADLINE, Ui.onSurface(c), true));
 
         ScrollView sv = new ScrollView(c);
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
@@ -266,41 +304,43 @@ public final class Dialogs {
         sv.addView(body);
         root.addView(sv);
 
-        LinearLayout foot = Ui.row(c);
-        foot.setGravity(Gravity.END);
+        s.foot = Ui.row(c);
+        s.foot.setGravity(Gravity.END);
         LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         fp.topMargin = Ui.dp(c, 14);
-        foot.setLayoutParams(fp);
-
-        TextView close = Ui.textButton(c, "关闭");
-        close.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { dlg.dismiss(); }
-        });
-        foot.addView(close);
-
-        if (okText != null && onOk != null) {
-            TextView ok = Ui.filledButton(c, okText);
-            ok.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) {
-                    dlg.dismiss();
-                    onOk.run();
-                }
-            });
-            LinearLayout.LayoutParams op = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            op.leftMargin = Ui.dp(c, 10);
-            foot.addView(ok, op);
-        }
-        root.addView(foot);
+        s.foot.setLayoutParams(fp);
+        root.addView(s.foot);
 
         LinearLayout wrap = Ui.column(c);
         wrap.setPadding(Ui.dp(c, 12), Ui.dp(c, 12), Ui.dp(c, 12), Ui.dp(c, 12));
         wrap.addView(root);
 
-        dlg.setView(wrap);
-        styleDialog(dlg, false);
-        return dlg;
+        s.dlg.setView(wrap);
+        styleDialog(s.dlg, false);
+        return s;
+    }
+
+    private static void addCancel(final Shell s, String text) {
+        TextView cancel = Ui.textButton(s.dlg.getContext(), text);
+        cancel.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { s.dlg.dismiss(); }
+        });
+        s.foot.addView(cancel);
+    }
+
+    private static void addOk(final Shell s, String text, final Saver onSave) {
+        Context c = s.dlg.getContext();
+        TextView ok = Ui.filledButton(c, text);
+        ok.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                if (onSave.save()) s.dlg.dismiss();
+            }
+        });
+        LinearLayout.LayoutParams op = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        op.leftMargin = Ui.dp(c, 10);
+        s.foot.addView(ok, op);
     }
 
     // ================== 辅助 ==================

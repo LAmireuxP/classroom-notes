@@ -164,40 +164,8 @@ public abstract class BaseSettingsActivity extends Activity {
      * 改成点选就没有拼错的可能了。
      */
     protected View optionRow(String label, String desc, boolean active, final Runnable onClick) {
-        LinearLayout row = Ui.row(this);
-        row.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 12));
-        row.setBackground(Ui.ripple(this, Color.TRANSPARENT, Ui.R_S));
-        row.setClickable(true);
-        row.setFocusable(true);
-        row.setMinimumHeight(Ui.dp(this, 52));
-        Ui.pressScale(row);
-
-        LinearLayout mid = Ui.column(this);
-        mid.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        mid.addView(Ui.text(this, label, Ui.T_BODY + 1,
-                active ? Ui.primary(this) : Ui.onSurface(this), active));
-        if (desc != null && desc.length() > 0) {
-            mid.addView(Ui.text(this, desc, Ui.T_LABEL, Ui.onSurfaceVariant(this), false));
-        }
-        row.addView(mid);
-
-        // 对勾固定 18dp 宽放在行尾，配合 mid 的 weight=1 把文字挤压换行，
-        // 不会出现两行说明盖到图标下面
-        if (active) {
-            android.widget.ImageView check =
-                    Icons.icon(this, R.drawable.ic_check, Ui.primary(this), 18);
-            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
-                    Ui.dp(this, 18), Ui.dp(this, 18));
-            clp.leftMargin = Ui.dp(this, 12);
-            clp.gravity = android.view.Gravity.CENTER_VERTICAL;
-            check.setLayoutParams(clp);
-            row.addView(check);
-        }
-
-        row.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { onClick.run(); }
-        });
-        return row;
+        // 具体的行画在 Ui.optionRow 里——「新建待办」的对话框也要用同一种行。
+        return Ui.optionRow(this, label, desc, active, 0, onClick);
     }
 
     /** 给「测试连接」提供完整配置：各协议的地址、鉴权、请求体都不一样。 */
