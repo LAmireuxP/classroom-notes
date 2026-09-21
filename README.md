@@ -17,7 +17,7 @@
 - 应用（国内可直连）：https://lamireuxp.github.io/classroom-notes/dist/classroom-1.2.1.apk
 - 发布页：https://github.com/LAmireuxP/classroom-notes/releases
 
-安装前请先卸载签名不同的旧版本；笔记数据用应用内「导出备份 / 导入备份」迁移。
+从 1.0 起各版本签名一致，可直接覆盖升级，笔记数据不会丢。
 
 ## 语音识别在各家 ROM 上的差异（小米 / OPPO / vivo…）
 
@@ -129,3 +129,36 @@ Windows 构建脚本 `build-pc.sh`，以及 1.1 的语音识别修复与设置�
 
 - Windows：`./build-pc.sh`（需 JDK 17 + Android SDK build-tools 34）
 - 手机端原构建配方：`src/build.sh`（未改动）
+
+## 签名信息
+
+**所有版本（1.0 起）均使用同一把签名密钥**，用户可正常覆盖升级。
+
+| 项目 | 值 |
+| --- | --- |
+| 文件名 | `keystore.jks` |
+| 密码（storepass / keypass） | `classroom-v2` |
+| alias | `classroom` |
+| 算法 | RSA 2048 / SHA256withRSA |
+| 有效期 | 2026-09-20 → 2056-09-12（30 年） |
+
+**证书指纹（SHA-256）—— 发布前请核对：**
+
+```
+32:A8:95:D3:77:4D:CA:F7:83:AB:4B:F5:1A:09:7E:E0:6C:B3:63:24:64:5B:87:DA:82:C9:8C:35:09:7E:E8:B0
+```
+
+核对命令：
+
+```bash
+keytool -list -keystore keystore.jks -storepass classroom-v2 | grep SHA256
+apksigner verify --print-certs build/课堂笔记-v1.2.1.apk | grep 'SHA-256 digest'
+```
+
+> ⚠️ **密钥必须长期存档（云盘 + 本地各一份）。**
+> Android 只允许「签名一致」的 APK 覆盖升级；一旦密钥丢失，此后所有版本都变成
+> 新签名，用户必须卸载重装并会丢失数据（除非先导出备份）。
+>
+> ⚠️ `build-pc.sh` 在找不到 `keystore.jks` 时会**静默生成一把新的**。
+> 密钥若因故不在原目录，跑脚本会悄悄换掉签名，而 `apksigner verify` 不会报错
+> —— 它只验签名有效性，不比对历史指纹。**发布前务必按上面的命令核对指纹。**

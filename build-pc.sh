@@ -49,10 +49,30 @@ PY
 
 echo "=== [6/6] 签名 ==="
 if [ ! -f "$KS" ]; then
+  # 密钥文件缺失时**不要**默默生成新的。
+  #
+  # Android 只允许「签名一致」的 APK 覆盖升级。这里悄悄造一把新钥匙，签出来的包
+  # 和此前所有版本签名都不同，老用户会装不上——而 apksigner verify 依然报「成功」
+  # （它只验签名有效性，不比对历史指纹），发布时根本察觉不到。
+  # 所以改成必须显式确认。
+  echo "" >&2
+  echo "!!! 找不到签名密钥：$KS" >&2
+  echo "    正式发布请勿自动生成新密钥 —— 那会导致所有老用户无法覆盖升级。" >&2
+  echo "    确认要用新密钥（仅限首次搭建），请显式执行：" >&2
+  echo "        ALLOW_NEW_KEYSTORE=1 ./build-pc.sh" >&2
+  echo "" >&2
+  [ "${ALLOW_NEW_KEYSTORE:-0}" = "1" ] || exit 1
+  echo "  （已确认）生成新密钥 $KS ..."
   keytool -genkeypair -keystore "$KS" -alias classroom -keyalg RSA -keysize 2048 \
     -validity 10950 -storepass "$KS_PASS" -keypass "$KS_PASS" \
     -dname "CN=Lamireux, OU=Dev, O=Personal, L=CN, ST=CN, C=CN"
 fi
+
+# 打出指纹，发布前随手核对（正常应恒为 32:A8:95:D3:...）
+echo "--- 签名密钥指纹 ---"
+keytool -list -keystore "$KS" -storepass "$KS_PASS" | grep -i 'SHA256' || true
+echo "--------------------"
+
 "$BT/apksigner.bat" sign --ks "$KS" --ks-key-alias classroom \
   --ks-pass "pass:$KS_PASS" --key-pass "pass:$KS_PASS" \
   --out "build/课堂笔记-v$VER.apk" build/aligned.apk
