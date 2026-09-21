@@ -66,7 +66,7 @@ public final class Loading {
 
         LinearLayout.LayoutParams tlp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(c, 4));
-        tlp.bottomMargin = Ui.dp(c, 10);
+        tlp.bottomMargin = Ui.v(c, 10);
         track.setLayoutParams(tlp);
         card.addView(track);
 

@@ -157,7 +157,8 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         scroller.setLayoutParams(sp);
 
         contentBox = Ui.column(this);
-        int padH = Ui.dp(this, 16), padTop = Ui.dp(this, 8), padBottom = Ui.dp(this, 96);
+        // 底部那块是留给 FAB 的滚动余量，不压；上面按纵向比例收紧
+        int padH = Ui.dp(this, 16), padTop = Ui.v(this, 8), padBottom = Ui.dp(this, 96);
         contentBox.setPadding(padH, padTop, padH, padBottom);
         scroller.addView(contentBox);
         column.addView(scroller);
@@ -169,7 +170,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         fp.gravity = Gravity.END | Gravity.BOTTOM;
         fp.rightMargin = Ui.dp(this, 16);
         // 底部 = 16dp + 导航栏高度，确保不被系统栏遮挡
-        fp.bottomMargin = Ui.dp(this, 16) + navBarHeight();
+        fp.bottomMargin = Ui.v(this, 16) + navBarHeight();
         fab.setLayoutParams(fp);
         fab.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { courseDialog(null); }
@@ -182,7 +183,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
     private View topBar() {
         LinearLayout bar = Ui.row(this);
         bar.setBackgroundColor(Ui.surface(this));
-        int padH = Ui.dp(this, 16), padV = Ui.dp(this, 12);
+        int padH = Ui.dp(this, 16), padV = Ui.v(this, 12);
         bar.setPadding(padH, padV, Ui.dp(this, 8), padV);
 
         // 标题区：图标 + 大标题
@@ -328,8 +329,8 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         secHead.addView(noteCount);
         LinearLayout.LayoutParams shp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        shp.topMargin = Ui.dp(this, 4);
-        shp.bottomMargin = Ui.dp(this, 12);
+        shp.topMargin = Ui.v(this, 4);
+        shp.bottomMargin = Ui.v(this, 12);
         secHead.setLayoutParams(shp);
         listBox.addView(secHead);
 
@@ -362,11 +363,11 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
 
         LinearLayout card = Ui.column(this);
         card.setBackground(Ui.round(this, Ui.surfaceContainer(this), Color.TRANSPARENT, Ui.R_M, 0));
-        int p = Ui.dp(this, 14);
-        card.setPadding(p, p, p, p);
+        int ph = Ui.dp(this, 14), pv = Ui.v(this, 14);
+        card.setPadding(ph, pv, ph, pv);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = Ui.dp(this, 16);
+        lp.bottomMargin = Ui.v(this, 16);
         card.setLayoutParams(lp);
 
         LinearLayout line = Ui.row(this);
@@ -376,7 +377,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
 
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        bp.topMargin = Ui.dp(this, 12);
+        bp.topMargin = Ui.v(this, 12);
         View bars = Ui.priorityProgress(this, db.todoByPriority());
         bars.setLayoutParams(bp);
         card.addView(bars);
@@ -397,14 +398,14 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         LinearLayout row = Ui.row(this);
         LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rlp.bottomMargin = Ui.dp(this, 2);
+        rlp.bottomMargin = Ui.v(this, 2);
         row.setLayoutParams(rlp);
-        int pad = Ui.dp(this, 14);
-        row.setPadding(pad, pad, Ui.dp(this, 6), pad);
+        int padH = Ui.dp(this, 14), padV = Ui.v(this, 14);
+        row.setPadding(padH, padV, Ui.dp(this, 6), padV);
         row.setBackground(Ui.ripple(this, Color.TRANSPARENT, Ui.R_M));
         row.setClickable(true);
         row.setFocusable(true);
-        row.setMinimumHeight(Ui.dp(this, 64));
+        row.setMinimumHeight(Ui.vMin(this, 64));
 
         // 色点（课程标识，非色条）
         View dot = new View(this);
@@ -433,7 +434,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
                 Ui.onSurfaceVariant(this), false);
         LinearLayout.LayoutParams mtp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        mtp.topMargin = Ui.dp(this, 3);
+        mtp.topMargin = Ui.v(this, 3);
         metaTv.setLayoutParams(mtp);
         mid.addView(metaTv);
         row.addView(mid);
@@ -459,8 +460,8 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
     private View emptyState() {
         LinearLayout box = Ui.column(this);
         box.setGravity(Gravity.CENTER);
-        int p = Ui.dp(this, 48);
-        box.setPadding(p, p, p, p);
+        int ph = Ui.dp(this, 48), pv = Ui.v(this, 48);
+        box.setPadding(ph, pv, ph, pv);
 
         LinearLayout iconCircle = new LinearLayout(this);
         iconCircle.setGravity(Gravity.CENTER);
@@ -479,7 +480,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        tp.topMargin = Ui.dp(this, 18);
+        tp.topMargin = Ui.v(this, 18);
         title.setLayoutParams(tp);
         box.addView(title);
 
@@ -488,7 +489,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         sub.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        sp.topMargin = Ui.dp(this, 6);
+        sp.topMargin = Ui.v(this, 6);
         sub.setLayoutParams(sp);
         box.addView(sub);
 
@@ -517,7 +518,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
 
     private View menuRow(int iconRes, String label, int color, final Runnable action) {
         LinearLayout row = Ui.row(this);
-        int padH = Ui.dp(this, 20), padV = Ui.dp(this, 14);
+        int padH = Ui.dp(this, 20), padV = Ui.v(this, 14);
         row.setPadding(padH, padV, padH, padV);
         row.setBackground(Ui.ripple(this, Color.TRANSPARENT, Ui.R_S));
         row.setClickable(true);

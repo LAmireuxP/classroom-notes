@@ -107,7 +107,7 @@ public class AiSettingsActivity extends BaseSettingsActivity {
         TextView tv = Ui.text(this, text, Ui.T_LABEL, Ui.onSurfaceVariant(this), false);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = Ui.dp(this, 10);
+        lp.topMargin = Ui.v(this, 10);
         tv.setLayoutParams(lp);
         return tv;
     }
@@ -115,11 +115,11 @@ public class AiSettingsActivity extends BaseSettingsActivity {
     /** 「填入厂商预设」一行：地址、协议、模型一起填好，省掉查文档。 */
     private View presetRow() {
         LinearLayout row = Ui.row(this);
-        row.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 12));
+        row.setPadding(Ui.dp(this, 16), Ui.v(this, 12), Ui.dp(this, 16), Ui.v(this, 12));
         row.setBackground(Ui.ripple(this, android.graphics.Color.TRANSPARENT, Ui.R_S));
         row.setClickable(true);
         row.setFocusable(true);
-        row.setMinimumHeight(Ui.dp(this, 52));
+        row.setMinimumHeight(Ui.vMin(this, 52));
         Ui.pressScale(row);
 
         LinearLayout mid = Ui.column(this);

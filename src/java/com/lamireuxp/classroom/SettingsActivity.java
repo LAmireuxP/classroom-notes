@@ -57,11 +57,11 @@ public class SettingsActivity extends BaseSettingsActivity {
         final boolean active = mode.equals(Prefs.themeMode(this));
 
         LinearLayout row = Ui.row(this);
-        row.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 12));
+        row.setPadding(Ui.dp(this, 16), Ui.v(this, 12), Ui.dp(this, 16), Ui.v(this, 12));
         row.setBackground(Ui.ripple(this, Color.TRANSPARENT, Ui.R_S));
         row.setClickable(true);
         row.setFocusable(true);
-        row.setMinimumHeight(Ui.dp(this, 52));
+        row.setMinimumHeight(Ui.vMin(this, 52));
         Ui.pressScale(row);
 
         LinearLayout mid = Ui.column(this);
@@ -86,11 +86,11 @@ public class SettingsActivity extends BaseSettingsActivity {
     /** 跳转型行（右侧带箭头），打开子设置页面。 */
     private View navRow(int iconRes, String label, String sub, final Class<?> target) {
         LinearLayout row = Ui.row(this);
-        row.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 12));
+        row.setPadding(Ui.dp(this, 16), Ui.v(this, 12), Ui.dp(this, 16), Ui.v(this, 12));
         row.setBackground(Ui.ripple(this, Color.TRANSPARENT, Ui.R_S));
         row.setClickable(true);
         row.setFocusable(true);
-        row.setMinimumHeight(Ui.dp(this, 56));
+        row.setMinimumHeight(Ui.vMin(this, 56));
         Ui.pressScale(row);
 
         row.addView(Icons.icon(this, iconRes, Ui.onSurfaceVariant(this), 20));
@@ -120,11 +120,11 @@ public class SettingsActivity extends BaseSettingsActivity {
     /** 动作行（无箭头、无副标题）。 */
     private View actionRow(int iconRes, String label, final Runnable action) {
         LinearLayout row = Ui.row(this);
-        row.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 12));
+        row.setPadding(Ui.dp(this, 16), Ui.v(this, 12), Ui.dp(this, 16), Ui.v(this, 12));
         row.setBackground(Ui.ripple(this, Color.TRANSPARENT, Ui.R_S));
         row.setClickable(true);
         row.setFocusable(true);
-        row.setMinimumHeight(Ui.dp(this, 52));
+        row.setMinimumHeight(Ui.vMin(this, 52));
         Ui.pressScale(row);
 
         row.addView(Icons.icon(this, iconRes, Ui.onSurface(this), 20));

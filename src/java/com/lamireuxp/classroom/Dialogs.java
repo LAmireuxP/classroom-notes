@@ -37,8 +37,8 @@ public final class Dialogs {
     private static LinearLayout dialogRoot(Context c) {
         LinearLayout root = Ui.column(c);
         root.setBackground(Ui.round(c, Ui.surfaceHigh(c), Color.TRANSPARENT, Ui.R_XL, 0));
-        int p = Ui.dp(c, 24);
-        root.setPadding(p, p, p, p);
+        int ph = Ui.dp(c, 24), pv = Ui.v(c, 24);
+        root.setPadding(ph, pv, ph, pv);
         return root;
     }
 
@@ -93,8 +93,8 @@ public final class Dialogs {
                     Ui.onSurfaceVariant(c), true);
             LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            llp.topMargin = Ui.dp(c, i == 0 ? 20 : 16);
-            llp.bottomMargin = Ui.dp(c, 6);
+            llp.topMargin = Ui.v(c, i == 0 ? 20 : 16);
+            llp.bottomMargin = Ui.v(c, 6);
             lb.setLayoutParams(llp);
             root.addView(lb);
 
@@ -115,7 +115,7 @@ public final class Dialogs {
         foot.setGravity(Gravity.END);
         LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        fp.topMargin = Ui.dp(c, 8);
+        fp.topMargin = Ui.v(c, 8);
         foot.setLayoutParams(fp);
 
         final AlertDialog dlg = new AlertDialog.Builder(a).create();
@@ -135,7 +135,7 @@ public final class Dialogs {
         root.addView(foot);
 
         LinearLayout wrap = Ui.column(c);
-        wrap.setPadding(Ui.dp(c, 12), Ui.dp(c, 12), Ui.dp(c, 12), Ui.dp(c, 12));
+        wrap.setPadding(Ui.dp(c, 12), Ui.v(c, 12), Ui.dp(c, 12), Ui.v(c, 12));
         wrap.addView(root);
 
         ScrollView sv = new ScrollView(c);
@@ -159,7 +159,7 @@ public final class Dialogs {
         // 顶部拖拽条（MD3 标志性元素）
         LinearLayout handleBox = Ui.column(c);
         handleBox.setGravity(Gravity.CENTER);
-        handleBox.setPadding(0, Ui.dp(c, 12), 0, 0);
+        handleBox.setPadding(0, Ui.v(c, 12), 0, 0);
         View handle = new View(c);
         handle.setBackground(Ui.round(c, Ui.outlineVariant(c), 0, Ui.R_FULL, 0));
         handle.setLayoutParams(Ui.lp(Ui.dp(c, 32), Ui.dp(c, 4)));
@@ -173,13 +173,13 @@ public final class Dialogs {
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             tp.leftMargin = Ui.dp(c, 24);
             tp.rightMargin = Ui.dp(c, 24);
-            tp.topMargin = Ui.dp(c, 18);
-            tp.bottomMargin = Ui.dp(c, 8);
+            tp.topMargin = Ui.v(c, 18);
+            tp.bottomMargin = Ui.v(c, 8);
             t.setLayoutParams(tp);
             root.addView(t);
         }
 
-        body.setPadding(0, Ui.dp(c, 4), 0, Ui.dp(c, 20));
+        body.setPadding(0, Ui.v(c, 4), 0, Ui.v(c, 20));
         root.addView(body);
 
         // 底部安全间距
@@ -210,7 +210,7 @@ public final class Dialogs {
         msg.setLineSpacing(Ui.dp(c, 4), 1f);
         LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        mp.topMargin = Ui.dp(c, 12);
+        mp.topMargin = Ui.v(c, 12);
         msg.setLayoutParams(mp);
         root.addView(msg);
 
@@ -218,7 +218,7 @@ public final class Dialogs {
         foot.setGravity(Gravity.END);
         LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        fp.topMargin = Ui.dp(c, 20);
+        fp.topMargin = Ui.v(c, 20);
         foot.setLayoutParams(fp);
 
         TextView cancel = Ui.textButton(c, "取消");
@@ -240,7 +240,7 @@ public final class Dialogs {
         root.addView(foot);
 
         LinearLayout wrap = Ui.column(c);
-        wrap.setPadding(Ui.dp(c, 12), Ui.dp(c, 12), Ui.dp(c, 12), Ui.dp(c, 12));
+        wrap.setPadding(Ui.dp(c, 12), Ui.v(c, 12), Ui.dp(c, 12), Ui.v(c, 12));
         wrap.addView(root);
 
         dlg.setView(wrap);
@@ -300,7 +300,7 @@ public final class Dialogs {
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
         sv.setLayoutParams(sp);
-        body.setPadding(0, Ui.dp(c, 14), 0, Ui.dp(c, 6));
+        body.setPadding(0, Ui.v(c, 14), 0, Ui.v(c, 6));
         sv.addView(body);
         root.addView(sv);
 
@@ -308,12 +308,12 @@ public final class Dialogs {
         s.foot.setGravity(Gravity.END);
         LinearLayout.LayoutParams fp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        fp.topMargin = Ui.dp(c, 14);
+        fp.topMargin = Ui.v(c, 14);
         s.foot.setLayoutParams(fp);
         root.addView(s.foot);
 
         LinearLayout wrap = Ui.column(c);
-        wrap.setPadding(Ui.dp(c, 12), Ui.dp(c, 12), Ui.dp(c, 12), Ui.dp(c, 12));
+        wrap.setPadding(Ui.dp(c, 12), Ui.v(c, 12), Ui.dp(c, 12), Ui.v(c, 12));
         wrap.addView(root);
 
         s.dlg.setView(wrap);

@@ -80,7 +80,7 @@ public final class Tip {
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setBackground(Ui.round(a, bg, Color.TRANSPARENT, Ui.R_L, 0));
         Ui.elevation(bar, 6);
-        int padH = Ui.dp(a, 14), padV = Ui.dp(a, 10);
+        int padH = Ui.dp(a, 14), padV = Ui.v(a, 10);
         bar.setPadding(padH, padV, padH, padV);
 
         // 前导图标（仅成功带）
@@ -147,7 +147,7 @@ public final class Tip {
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT);
         lp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-        lp.bottomMargin = Ui.dp(a, 20);
+        lp.bottomMargin = Ui.v(a, 20);
         bar.setLayoutParams(lp);
 
         bar.setAlpha(0f);

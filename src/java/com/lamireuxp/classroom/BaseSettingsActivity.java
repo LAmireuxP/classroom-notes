@@ -78,7 +78,7 @@ public abstract class BaseSettingsActivity extends Activity {
 
         body = Ui.column(this);
         int bp = Ui.dp(this, 16);
-        body.setPadding(bp, Ui.dp(this, 4), bp, Ui.dp(this, 32));
+        body.setPadding(bp, Ui.v(this, 4), bp, Ui.v(this, 32));
         sv.addView(body);
         pageRoot.addView(sv);
 
@@ -88,7 +88,7 @@ public abstract class BaseSettingsActivity extends Activity {
     private View topBar() {
         LinearLayout bar = Ui.row(this);
         bar.setBackgroundColor(Ui.surface(this));
-        bar.setPadding(Ui.dp(this, 6), Ui.dp(this, 10), Ui.dp(this, 12), Ui.dp(this, 10));
+        bar.setPadding(Ui.dp(this, 6), Ui.v(this, 10), Ui.dp(this, 12), Ui.v(this, 10));
         // 状态栏内边距（edge-to-edge 下内容不被状态栏遮挡）
         bar.setPadding(bar.getPaddingLeft(),
                 bar.getPaddingTop() + Ui.statusBarHeight(this),
@@ -119,8 +119,8 @@ public abstract class BaseSettingsActivity extends Activity {
         TextView tv = Ui.text(this, text, Ui.T_LABEL, Ui.primary(this), true);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = Ui.dp(this, 18);
-        lp.bottomMargin = Ui.dp(this, 6);
+        lp.topMargin = Ui.v(this, 18);
+        lp.bottomMargin = Ui.v(this, 6);
         lp.leftMargin = Ui.dp(this, 4);
         tv.setLayoutParams(lp);
         return tv;
@@ -131,8 +131,8 @@ public abstract class BaseSettingsActivity extends Activity {
         TextView lb = Ui.text(this, label, Ui.T_LABEL, Ui.onSurfaceVariant(this), true);
         LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        llp.topMargin = Ui.dp(this, 8);
-        llp.bottomMargin = Ui.dp(this, 6);
+        llp.topMargin = Ui.v(this, 8);
+        llp.bottomMargin = Ui.v(this, 6);
         lb.setLayoutParams(llp);
         body.addView(lb);
 
@@ -147,9 +147,9 @@ public abstract class BaseSettingsActivity extends Activity {
         TextView btn = Ui.filledButton(this, text);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = Ui.dp(this, 24);
+        lp.topMargin = Ui.v(this, 24);
         btn.setLayoutParams(lp);
-        btn.setMinHeight(Ui.dp(this, 46));
+        btn.setMinHeight(Ui.vMin(this, 46));
         btn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { onSave.run(); }
         });
@@ -198,7 +198,7 @@ public abstract class BaseSettingsActivity extends Activity {
         final TextView btn = Ui.textButton(this, "测试连接");
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = Ui.dp(this, 6);
+        lp.topMargin = Ui.v(this, 6);
         btn.setLayoutParams(lp);
         btn.setMinHeight(Ui.dp(this, 44));
         btn.setGravity(android.view.Gravity.CENTER);

@@ -41,6 +41,28 @@ public final class Ui {
                 TypedValue.COMPLEX_UNIT_DIP, v, c.getResources().getDisplayMetrics()));
     }
 
+    /**
+     * 纵向间距的紧凑系数。
+     *
+     * 各处间距原来按 4/8/12/16/24 的标准网格给，单看每一处都没问题，一屏叠下来就偏松：
+     * 一页放不下几条内容，滚动成了常态。纵向统一压到这个比例——左右留白不动，
+     * 呼吸感靠横向保持，纵向省下来的高度换成「一眼能多看两行」。
+     */
+    private static final float V_SCALE = 0.78f;
+
+    /** 纵向尺寸：上下方向的内外边距、间隔都用它，别再直接写 dp。 */
+    public static int v(Context c, float dp) {
+        return dp(c, dp * V_SCALE);
+    }
+
+    /**
+     * 可点区域的纵向高度：压缩后也不能低于 44dp，否则点起来开始费劲。
+     * 列表行、分段按钮这类「手要戳的地方」用它，纯间距用 {@link #v}。
+     */
+    public static int vMin(Context c, float dp) {
+        return Math.max(dp(c, 44), v(c, dp));
+    }
+
     /** MD3 圆角分级（dp） */
     public static final float R_XS = 4;
     public static final float R_S = 8;
@@ -339,11 +361,11 @@ public final class Ui {
     public static LinearLayout card(Context c) {
         LinearLayout ll = column(c);
         ll.setBackground(round(c, surfaceContainer(c), hairline(c), R_L, 0.8f));
-        int p = dp(c, 16);
-        ll.setPadding(p, p, p, p);
+        int ph = dp(c, 16), pv = v(c, 16);
+        ll.setPadding(ph, pv, ph, pv);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = dp(c, 12);
+        lp.bottomMargin = v(c, 12);
         ll.setLayoutParams(lp);
         return ll;
     }
@@ -386,7 +408,7 @@ public final class Ui {
         private static TextView baseButton(Context c, String text) {
         TextView tv = text(c, text, T_BODY, onSurface(c), true);
         tv.setGravity(Gravity.CENTER);
-        int padH = dp(c, 24), padV = dp(c, 10);
+        int padH = dp(c, 24), padV = v(c, 10);
         tv.setPadding(padH, padV, padH, padV);
         tv.setMinHeight(dp(c, 40));
         tv.setClickable(true);
@@ -406,11 +428,11 @@ public final class Ui {
         et.setHintTextColor(onSurfaceVariant(c));
         et.setBackground(round(c, surfaceContainer(c), outline(c), R_S, 1f));
         int p = dp(c, 14);
-        et.setPadding(p, dp(c, 11), p, dp(c, 11));
-        et.setMinHeight(dp(c, 48));
+        et.setPadding(p, v(c, 11), p, v(c, 11));
+        et.setMinHeight(vMin(c, 48));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = dp(c, 12);
+        lp.bottomMargin = v(c, 12);
         et.setLayoutParams(lp);
         return et;
     }
@@ -419,9 +441,9 @@ public final class Ui {
     public static LinearLayout searchBarWithIcon(Context c, String hint, int iconRes) {
         LinearLayout box = row(c);
         box.setBackground(round(c, surfaceContainer(c), outlineVariant(c), R_FULL, 0.8f));
-        int padH = dp(c, 18), padV = dp(c, 11);
+        int padH = dp(c, 18), padV = v(c, 11);
         box.setPadding(padH, padV, dp(c, 18), padV);
-        box.setMinimumHeight(dp(c, 48));
+        box.setMinimumHeight(vMin(c, 48));
 
         ImageView icon = new ImageView(c);
         icon.setImageResource(iconRes);
@@ -445,7 +467,7 @@ public final class Ui {
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = dp(c, 14);
+        lp.bottomMargin = v(c, 14);
         box.setLayoutParams(lp);
 
         // 把输入框挂到 box 上，方便外部取用
@@ -464,7 +486,7 @@ public final class Ui {
     public static TextView tonalChip(Context c, String text, int containerColor, int onColor) {
         TextView tv = text(c, text, T_LABEL + 0.5f, onColor, true);
         tv.setGravity(Gravity.CENTER);
-        int padH = dp(c, 10), padV = dp(c, 5);
+        int padH = dp(c, 10), padV = v(c, 5);
         tv.setPadding(padH, padV, padH, padV);
         tv.setBackground(round(c, containerColor, Color.TRANSPARENT, R_S, 0));
         return tv;
@@ -519,7 +541,7 @@ public final class Ui {
         if (gap) {
             LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            rp.topMargin = dp(c, 8);
+            rp.topMargin = v(c, 8);
             row.setLayoutParams(rp);
         }
 
@@ -587,7 +609,7 @@ public final class Ui {
             seg.setGravity(Gravity.CENTER);
             seg.setLayoutParams(new LinearLayout.LayoutParams(
                     0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-            seg.setPadding(0, dp(c, 10), 0, dp(c, 10));
+            seg.setPadding(0, v(c, 10), 0, v(c, 10));
             seg.setMinimumHeight(dp(c, 44));
             if (active) {
                 seg.setBackground(ripple(c, activeBg, R_FULL));
@@ -628,11 +650,11 @@ public final class Ui {
     public static View optionRow(Context c, String label, String desc, boolean active,
                                  final Runnable onClick) {
         LinearLayout row = row(c);
-        row.setPadding(dp(c, 16), dp(c, 12), dp(c, 16), dp(c, 12));
+        row.setPadding(dp(c, 16), v(c, 12), dp(c, 16), v(c, 12));
         row.setBackground(ripple(c, Color.TRANSPARENT, R_S));
         row.setClickable(true);
         row.setFocusable(true);
-        row.setMinimumHeight(dp(c, 52));
+        row.setMinimumHeight(vMin(c, 52));
         pressScale(row);
 
         LinearLayout mid = column(c);

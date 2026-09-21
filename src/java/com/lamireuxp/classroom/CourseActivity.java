@@ -212,7 +212,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         content = Ui.column(this);
         LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        cp.topMargin = Ui.dp(this, 16);
+        cp.topMargin = Ui.v(this, 16);
         content.setLayoutParams(cp);
         body.addView(content);
 
@@ -223,7 +223,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     private View topBar() {
         LinearLayout bar = Ui.row(this);
         bar.setBackgroundColor(Ui.surface(this));
-        bar.setPadding(Ui.dp(this, 6), Ui.dp(this, 10), Ui.dp(this, 12), Ui.dp(this, 10));
+        bar.setPadding(Ui.dp(this, 6), Ui.v(this, 10), Ui.dp(this, 12), Ui.v(this, 10));
 
         LinearLayout back = Icons.iconButton(this, R.drawable.ic_back, 42,
                 Ui.onSurfaceVariant(this));
@@ -247,7 +247,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                     Ui.onSurfaceVariant(this), false);
             LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            sp.topMargin = Ui.dp(this, 2);
+            sp.topMargin = Ui.v(this, 2);
             sub.setLayoutParams(sp);
             titleBox.addView(sub);
         }
@@ -291,7 +291,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         tabBar.removeAllViews();
         tabBar.setBackground(Ui.round(this, Ui.surfaceContainer(this),
                 Color.TRANSPARENT, Ui.R_FULL, 0));
-        tabBar.setPadding(Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4), Ui.dp(this, 4));
+        tabBar.setPadding(Ui.dp(this, 4), Ui.v(this, 4), Ui.dp(this, 4), Ui.v(this, 4));
 
         tabBar.addView(segment("笔记", "notes", countNotes()));
         tabBar.addView(segment("待办", "todos", countOpenTodos()));
@@ -314,9 +314,9 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         seg.setLayoutParams(lp);
-        int padV = Ui.dp(this, 10);
+        int padV = Ui.v(this, 10);
         seg.setPadding(0, padV, 0, padV);
-        seg.setMinimumHeight(Ui.dp(this, 44));
+        seg.setMinimumHeight(Ui.vMin(this, 44));
 
         if (active) {
             seg.setBackground(Ui.ripple(this, activeBg, Ui.R_FULL));
@@ -388,7 +388,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
 
         LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        ap.bottomMargin = Ui.dp(this, 18);
+        ap.bottomMargin = Ui.v(this, 18);
         actions.setLayoutParams(ap);
         content.addView(actions);
 
@@ -399,7 +399,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                 Ui.onSurfaceVariant(this), false);
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        clp.bottomMargin = Ui.dp(this, 10);
+        clp.bottomMargin = Ui.v(this, 10);
         count.setLayoutParams(clp);
         content.addView(count);
 
@@ -422,12 +422,12 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         LinearLayout row = Ui.column(this);
         LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rlp.bottomMargin = Ui.dp(this, 4);
+        rlp.bottomMargin = Ui.v(this, 4);
         row.setLayoutParams(rlp);
         row.setBackground(Ui.ripple(this, expanded ? Ui.surfaceContainer(this)
                 : Color.TRANSPARENT, Ui.R_M));
-        int pad = Ui.dp(this, 12);
-        row.setPadding(pad, pad, pad, pad);
+        int ph = Ui.dp(this, 12), padV = Ui.v(this, 12);
+        row.setPadding(ph, padV, ph, padV);
 
         // ---- 头行：置顶 + 标题 + 日期 ----
         LinearLayout head = Ui.row(this);
@@ -484,7 +484,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         bodyTv.setLineSpacing(Ui.dp(this, 5), 1f);
         LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        bp.topMargin = Ui.dp(this, 6);
+        bp.topMargin = Ui.v(this, 6);
         bp.leftMargin = Ui.dp(this, 17);
         bodyTv.setLayoutParams(bp);
         row.addView(bodyTv);
@@ -494,13 +494,13 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
             LinearLayout kpBox = Ui.column(this);
             LinearLayout.LayoutParams kp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            kp.topMargin = Ui.dp(this, 10);
+            kp.topMargin = Ui.v(this, 10);
             kp.leftMargin = Ui.dp(this, 17);
             kpBox.setLayoutParams(kp);
             kpBox.setBackground(Ui.round(this, Ui.surfaceContainer(this),
                     Color.TRANSPARENT, Ui.R_S, 0));
-            int kpad = Ui.dp(this, 12);
-            kpBox.setPadding(kpad, kpad, kpad, kpad);
+            int kph = Ui.dp(this, 12), kpv = Ui.v(this, 12);
+            kpBox.setPadding(kph, kpv, kph, kpv);
 
             TextView kTitle = Ui.text(this, "重点", Ui.T_LABEL, Ui.primary(this), true);
             kpBox.addView(kTitle);
@@ -509,7 +509,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                         Ui.onSurfaceVariant(this), false);
                 LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                ip.topMargin = Ui.dp(this, 4);
+                ip.topMargin = Ui.v(this, 4);
                 item.setLayoutParams(ip);
                 kpBox.addView(item);
             }
@@ -521,7 +521,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
             LinearLayout ops = Ui.row(this);
             LinearLayout.LayoutParams op = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 36));
-            op.topMargin = Ui.dp(this, 12);
+            op.topMargin = Ui.v(this, 12);
             ops.setLayoutParams(op);
 
             ops.addView(actionCell(R.drawable.ic_pin, n.pinned ? "取消置顶" : "置顶",
@@ -602,7 +602,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         actions.addView(addBtn);
         LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        ap.bottomMargin = Ui.dp(this, 18);
+        ap.bottomMargin = Ui.v(this, 18);
         actions.setLayoutParams(ap);
         content.addView(actions);
 
@@ -619,7 +619,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                 Ui.T_LABEL, Ui.onSurfaceVariant(this), false);
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        slp.bottomMargin = Ui.dp(this, 10);
+        slp.bottomMargin = Ui.v(this, 10);
         summary.setLayoutParams(slp);
         content.addView(summary);
 
@@ -627,7 +627,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         // 两处用的是同一个 Ui.priorityProgress，样子和颜色一致。
         LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        plp.bottomMargin = Ui.dp(this, 10);
+        plp.bottomMargin = Ui.v(this, 10);
         View progress = Ui.priorityProgress(this, db.todoByPriority(courseId));
         progress.setLayoutParams(plp);
         content.addView(progress);
@@ -649,8 +649,8 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         TextView tv = Ui.text(this, text, Ui.T_LABEL, Ui.onSurfaceVariant(this), true);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = Ui.dp(this, 14);
-        lp.bottomMargin = Ui.dp(this, 4);
+        lp.topMargin = Ui.v(this, 14);
+        lp.bottomMargin = Ui.v(this, 4);
         tv.setLayoutParams(lp);
         return tv;
     }
@@ -659,11 +659,11 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         LinearLayout row = Ui.row(this);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = Ui.dp(this, 2);
+        lp.bottomMargin = Ui.v(this, 2);
         row.setLayoutParams(lp);
-        int pad = Ui.dp(this, 12);
-        row.setPadding(pad, pad, pad, pad);
-        row.setMinimumHeight(Ui.dp(this, 56));
+        int ph = Ui.dp(this, 12), padV = Ui.v(this, 12);
+        row.setPadding(ph, padV, ph, padV);
+        row.setMinimumHeight(Ui.vMin(this, 56));
 
         // MD3 Checkbox：圆形勾选
         final LinearLayout checkBox = Ui.row(this);
@@ -705,7 +705,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         TextView subTv = Ui.text(this, sub, Ui.T_LABEL, Ui.onSurfaceVariant(this), false);
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        sp.topMargin = Ui.dp(this, 2);
+        sp.topMargin = Ui.v(this, 2);
         subTv.setLayoutParams(sp);
         mid.addView(subTv);
         row.addView(mid);
@@ -733,7 +733,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         LinearLayout box = Ui.column(this);
         box.setGravity(Gravity.CENTER);
         int p = Ui.dp(this, 32);
-        box.setPadding(p, Ui.dp(this, 40), p, Ui.dp(this, 40));
+        box.setPadding(p, Ui.v(this, 40), p, Ui.v(this, 40));
 
         LinearLayout circle = new LinearLayout(this);
         circle.setGravity(Gravity.CENTER);
@@ -750,7 +750,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         tv.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        tp.topMargin = Ui.dp(this, 16);
+        tp.topMargin = Ui.v(this, 16);
         tv.setLayoutParams(tp);
         box.addView(tv);
 
@@ -758,7 +758,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         hintTv.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hp.topMargin = Ui.dp(this, 6);
+        hp.topMargin = Ui.v(this, 6);
         hintTv.setLayoutParams(hp);
         box.addView(hintTv);
 
@@ -860,8 +860,8 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         TextView lb = Ui.text(this, text, Ui.T_LABEL, Ui.onSurfaceVariant(this), true);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = Ui.dp(this, 16);
-        lp.bottomMargin = Ui.dp(this, 6);
+        lp.topMargin = Ui.v(this, 16);
+        lp.bottomMargin = Ui.v(this, 6);
         lb.setLayoutParams(lp);
         box.addView(lb);
     }
@@ -1034,7 +1034,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         recTextView.setLineSpacing(Ui.dp(this, 4), 1f);
         LinearLayout.LayoutParams rtp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rtp.topMargin = Ui.dp(this, 16);
+        rtp.topMargin = Ui.v(this, 16);
         recTextView.setLayoutParams(rtp);
         recPanel.addView(recTextView);
 
@@ -1043,7 +1043,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                     Ui.T_CAPTION, Ui.onSurfaceVariant(this), false);
             LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            hp.topMargin = Ui.dp(this, 10);
+            hp.topMargin = Ui.v(this, 10);
             hint.setLayoutParams(hp);
             recPanel.addView(hint);
         }
@@ -1052,7 +1052,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         ctrl.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams ctp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        ctp.topMargin = Ui.dp(this, 18);
+        ctp.topMargin = Ui.v(this, 18);
         ctrl.setLayoutParams(ctp);
 
         final LinearLayout pause = Icons.iconTextButton(this, 0, "暂停", 1);
@@ -1232,7 +1232,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
             TextView kpTitle = Ui.text(this, "重点提炼", Ui.T_LABEL, Ui.primary(this), true);
             LinearLayout.LayoutParams kp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            kp.topMargin = Ui.dp(this, 16);
+            kp.topMargin = Ui.v(this, 16);
             kpTitle.setLayoutParams(kp);
             box.addView(kpTitle);
 
@@ -1241,7 +1241,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                         Ui.onSurfaceVariant(this), false);
                 LinearLayout.LayoutParams ip = new LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                ip.topMargin = Ui.dp(this, 5);
+                ip.topMargin = Ui.v(this, 5);
                 item.setLayoutParams(ip);
                 box.addView(item);
             }

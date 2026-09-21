@@ -90,11 +90,11 @@ public class TsSettingsActivity extends BaseSettingsActivity {
     /** 「打开授权页」一行：依次尝试厂商识别服务的授权页、语音助手、系统语音设置。 */
     private View authRow() {
         LinearLayout row = Ui.row(this);
-        row.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 12));
+        row.setPadding(Ui.dp(this, 16), Ui.v(this, 12), Ui.dp(this, 16), Ui.v(this, 12));
         row.setBackground(Ui.ripple(this, Color.TRANSPARENT, Ui.R_S));
         row.setClickable(true);
         row.setFocusable(true);
-        row.setMinimumHeight(Ui.dp(this, 52));
+        row.setMinimumHeight(Ui.vMin(this, 52));
         Ui.pressScale(row);
 
         LinearLayout mid = Ui.column(this);
@@ -158,11 +158,11 @@ public class TsSettingsActivity extends BaseSettingsActivity {
      */
     private View syncRow() {
         LinearLayout row = Ui.row(this);
-        row.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 12));
+        row.setPadding(Ui.dp(this, 16), Ui.v(this, 12), Ui.dp(this, 16), Ui.v(this, 12));
         row.setBackground(Ui.ripple(this, Color.TRANSPARENT, Ui.R_S));
         row.setClickable(true);
         row.setFocusable(true);
-        row.setMinimumHeight(Ui.dp(this, 52));
+        row.setMinimumHeight(Ui.vMin(this, 52));
         Ui.pressScale(row);
 
         LinearLayout mid = Ui.column(this);
