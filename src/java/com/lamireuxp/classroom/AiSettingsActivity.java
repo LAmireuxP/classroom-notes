@@ -55,7 +55,7 @@ public class AiSettingsActivity extends BaseSettingsActivity {
         }
         Prefs.saveAi(this, endpoint, keyField.getText().toString(),
                 modelField.getText().toString());
-        Tip.show(this, "AI 设置已保存");
+        Tip.success(this, "AI 设置已保存");
         finish();
     }
 }

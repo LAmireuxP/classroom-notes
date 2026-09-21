@@ -278,7 +278,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                         if (submitDialog != null) submitDialog.dismiss();
                         submitDialog = null;
                         buildUi();
-                        Tip.show(CourseActivity.this, "课程已更新");
+                        Tip.success(CourseActivity.this, "课程已更新");
                     }
                 });
     }
@@ -576,7 +576,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                         if (n.id.equals(expandedNoteId)) expandedNoteId = null;
                         renderTabs();
                         renderContent();
-                        Tip.show(CourseActivity.this, "笔记已删除");
+                        Tip.success(CourseActivity.this, "笔记已删除");
                     }
                 });
     }
@@ -705,7 +705,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                 db.deleteTodo(t.id);
                 renderTabs();
                 renderContent();
-                Tip.show(CourseActivity.this, "待办已删除");
+                Tip.success(CourseActivity.this, "待办已删除");
             }
         });
         row.addView(del);
@@ -789,7 +789,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                         submitDialog = null;
                         renderTabs();
                         renderContent();
-                        Tip.show(CourseActivity.this, isEdit ? "笔记已更新" : "笔记已创建");
+                        Tip.success(CourseActivity.this, isEdit ? "笔记已更新" : "笔记已创建");
                     }
                 });
     }
@@ -820,7 +820,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                         submitDialog = null;
                         renderTabs();
                         renderContent();
-                        Tip.show(CourseActivity.this, "待办已创建");
+                        Tip.success(CourseActivity.this, "待办已创建");
                     }
                 });
     }

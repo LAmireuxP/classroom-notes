@@ -111,7 +111,7 @@ public class TsSettingsActivity extends BaseSettingsActivity {
             // 关掉时保留地址等配置，下次开回来不用重填
             Prefs.saveTs(this, "off", Prefs.tsEndpoint(this), Prefs.tsKey(this),
                     Prefs.tsModel(this));
-            Tip.show(this, "已关闭云端转写");
+            Tip.success(this, "已关闭云端转写");
             finish();
             return;
         }
@@ -122,7 +122,7 @@ public class TsSettingsActivity extends BaseSettingsActivity {
         }
         Prefs.saveTs(this, mode, endpoint, keyField.getText().toString(),
                 modelField.getText().toString());
-        Tip.show(this, "转写设置已保存");
+        Tip.success(this, "转写设置已保存");
         finish();
     }
 }

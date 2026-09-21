@@ -36,15 +36,10 @@ public final class Tip {
 
     // ================= 对外入口 =================
 
-    /** 中性提示：深色药丸，无图标。 */
-    public static void show(Activity a, String msg) {
-        showInternal(a, msg, Ui.inverseSurface(a), Ui.inverseOnSurface(a), 0, 0, null, null);
-    }
-
-    /** 成功：深色药丸 + 对勾。 */
+    /** 成功：深色药丸 + 对勾。用于「用户发起的写操作已完成」。 */
     public static void success(Activity a, String msg) {
         showInternal(a, msg, Ui.inverseSurface(a), Ui.inverseOnSurface(a),
-                R.drawable.ic_check, Ui.primary(a), null, null);
+                R.drawable.ic_check, Ui.tone(a, "success"), null, null);
     }
 
     /** 错误：error_container 整条变色。 */

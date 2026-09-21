@@ -32,6 +32,13 @@
     <color name="light_inverse_surface">#303034</color>
     <color name="light_inverse_on_surface">#F3F0F4</color>
 
+    <!--
+      成功态对勾色。药丸底色用的是 inverse_surface（浅主题下是深灰 #303034、
+      深主题下反而是浅灰 #E4E1E6），所以两种主题的绿要反着配：浅主题药丸底深、
+      用亮一点的绿，深主题药丸底浅、用暗一点的绿，对比度都按图形元素 >=3:1 来的。
+    -->
+    <color name="light_success">#34C77B</color>
+
     <!-- Material Design 3 · Dark Palettes -->
     <color name="dark_primary">#BAC3FF</color>
     <color name="dark_on_primary">#1D2B77</color>
@@ -70,6 +77,9 @@
     <color name="dark_hairline">#2E2F35</color>
     <color name="dark_inverse_surface">#E4E1E6</color>
     <color name="dark_inverse_on_surface">#303034</color>
+
+    <!-- 深主题的药丸底是浅灰（inverse_surface 跟着主题反），所以绿要压暗。 -->
+    <color name="dark_success">#0E7A4A</color>
 
     <color name="ic_launcher_background">#ffffff</color>
 </resources>

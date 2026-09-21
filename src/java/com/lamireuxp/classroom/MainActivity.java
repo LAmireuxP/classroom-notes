@@ -543,7 +543,12 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         tv.setLayoutParams(tp);
         row.addView(tv);
         row.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { action.run(); }
+            @Override public void onClick(View v) {
+                // 先收掉抽屉再执行动作。原来不关：点「删除课程」弹确认框时抽屉还压在底下，
+                // 确认框关掉后抽屉露出来，标题和内容都对不上了。
+                dismissSheets();
+                action.run();
+            }
         });
         return row;
     }
@@ -566,10 +571,10 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
                         String teacher = f[1].getText().toString().trim();
                         if (editing == null) {
                             db.saveCourse(Id.gen(), name, teacher, nextColor());
-                            Tip.show(MainActivity.this, "课程已创建");
+                            Tip.success(MainActivity.this, "课程已创建");
                         } else {
                             db.saveCourse(editing.id, name, teacher, editing.color);
-                            Tip.show(MainActivity.this, "课程已更新");
+                            Tip.success(MainActivity.this, "课程已更新");
                         }
                         closeSubmit();
                         refresh();
@@ -589,7 +594,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
                     @Override public void run() {
                         db.deleteCourse(c.id);
                         refresh();
-                        Tip.show(MainActivity.this, "课程已删除");
+                        Tip.success(MainActivity.this, "课程已删除");
                     }
                 });
     }

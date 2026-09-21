@@ -192,7 +192,7 @@ public class SettingsActivity extends BaseSettingsActivity {
             if (req == REQ_EXPORT_JSON || req == REQ_EXPORT_MD) {
                 Backup.writeText(this, uri, pendingExport);
                 pendingExport = null;
-                Tip.show(this, "已导出到所选位置");
+                Tip.success(this, "已导出到所选位置");
             } else if (req == REQ_IMPORT_JSON) {
                 final String text = Backup.readText(this, uri);
                 Dialogs.confirm(this, "导入备份",
@@ -201,7 +201,7 @@ public class SettingsActivity extends BaseSettingsActivity {
                             @Override public void run() {
                                 try {
                                     int n = Backup.importJson(SettingsActivity.this, text);
-                                    Tip.show(SettingsActivity.this, "已导入 " + n + " 门课程");
+                                    Tip.success(SettingsActivity.this, "已导入 " + n + " 门课程");
                                 } catch (Throwable e) {
                                     Tip.error(SettingsActivity.this, "导入失败：" + e.getMessage());
                                 }
