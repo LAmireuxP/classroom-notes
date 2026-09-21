@@ -9,7 +9,7 @@ BT="$SDK/build-tools/34.0.0"
 AJ="$SDK/platforms/android-34/android.jar"
 KS=${KEYSTORE:-keystore.jks}
 KS_PASS=${KS_PASS:-classroom-v2}
-VER=1.2.2
+VER=1.2.3
 
 cd "$(dirname "$0")"
 rm -rf build && mkdir -p build/classes build/gen build/dex

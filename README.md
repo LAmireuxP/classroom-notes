@@ -1,7 +1,7 @@
 # 课堂笔记 · Android 原生版
 
 课程笔记、待办、语音转写、AI 总结。纯原生 Java 实现，零第三方依赖，APK 约 187 KB。
-当前版本 **1.2.2**。
+当前版本 **1.2.3**。
 
 ## 致谢
 
@@ -23,7 +23,7 @@ Windows 构建脚本 `build-pc.sh`，以及 1.1 的语音识别修复与设置�
 
 ## 下载
 
-- 应用（国内可直连）：https://lamireuxp.github.io/classroom-notes/dist/classroom-1.2.2.apk
+- 应用（国内可直连）：https://lamireuxp.github.io/classroom-notes/dist/classroom-1.2.3.apk
 - 发布页：https://github.com/LAmireuxP/classroom-notes/releases
 
 从 1.0 起各版本签名一致，可直接覆盖升级，笔记数据不会丢。
@@ -72,15 +72,20 @@ ROM 版本的策略：
 
 App 里的对应行为：
 
-- 识别被设备侧拦下（**一次回调都没给过就被拒**）时，提示条上的按钮是**「去授权」**，
-  点了会打开上表里的语音助手（按包名依次尝试：`com.miui.voiceassist`、`com.heytap.speechassist`、
-  `com.coloros.speechassist`、`com.vivo.voiceassist`、`com.vivo.ai`、`com.huawei.vassistant`、
-  `com.hihonor.vassistant`、`com.meizu.voiceassist`、`com.samsung.android.bixby.agent`，
-  最后兜底到系统「语音输入」设置页）。这些入口都写进了 manifest 的 `<queries>`——
-  targetSdk ≥ 30 的包可见性过滤会让没声明的包解析不到，点了等于没点。
-- 「拦下」这件事只记在**进程内**：这次运行里后续录音直接走纯录音 + 云转写，不再反复去戳
-  识别服务；进程重启 / 升级 / 换机后会自动重新试一次，识别真的出过字也立刻解除标记。
-  只记「零回调被拒」，偶发故障（出过回调之后才断）不记，下次照样重试。
+- 识别被设备侧拦下（**一次回调都没给过就被拒**）时，录音页**主动弹一个模态引导框**（不是会消失
+  的提示条），主按钮「去同意」直接拉起厂商授权页：优先试小米识别服务自带的授权弹窗
+  （`com.xiaomi.mibrain.speech.cta`，实测可被外部唤起），再依次试厂商语音助手
+  （`com.miui.voiceassist`、`com.heytap.speechassist`、`com.coloros.speechassist`、
+  `com.vivo.voiceassist`、`com.vivo.ai`、`com.huawei.vassistant`、`com.hihonor.vassistant`、
+  `com.meizu.voiceassist`、`com.samsung.android.bixby.agent`），最后兜底到系统「语音输入」设置页。
+  这些入口全部写进了 manifest 的 `<queries>`——targetSdk ≥ 30 的包可见性过滤会让没声明的包解析不到，
+  点了等于没点。
+- 引导是**主动**的：授权是恢复实时识别的唯一出路，不能赌用户看得见一条小提示。除了录音时弹框，
+  「设置 → 语音转写设置」底部还有一个常驻的**「打开厂商授权页」**入口——用户当场点了「稍后」，
+  之后也能自己找到地方，而不是这条路只响一次。
+- 点「去同意」会**清掉「被拦下」标记**：授权很可能就在这一步完成，下次录音必须重新试系统识别，
+  不能被一次旧失败永久堵死。「拦下」标记本身也只记在**进程内**——重启 / 升级 / 换机后自动重试，
+  识别真的出过字也立刻解除；只记「零回调被拒」，偶发故障不记。
 - **无论哪种设备，录音都不会因为识别失败被丢掉**：识别用不了时会话降级成纯录音继续跑，
   结束后自动走云端转写。
 
@@ -88,6 +93,15 @@ App 里的对应行为：
 自建的 whisper.cpp 或任意 OpenAI 兼容转写接口。
 
 ## 更新日志
+
+### 1.2.3
+
+- **语音授权改为主动弹出**：识别被厂商策略拦下（小米 CTA / 机型白名单这类，表现是给了麦克风权限
+  但识别服务零回调直接拒绝）时，不再只在一条会消失的提示条上挂个「去授权」按钮——录音页**主动弹模态
+  引导框**，一键把授权页拉起来；并在「设置 → 语音转写设置」底部加了**常驻的「打开厂商授权页」入口**，
+  当场点了「稍后」的用户之后也能自己找到。这是修「换设备就调用不了、还得用户自己去 adb 唤醒协议」的问题。
+- 授权入口新增小米识别服务自带弹窗（`com.xiaomi.mibrain.speech.cta`）为第一优先，厂商语音助手为兜底，
+  并补进 manifest `<queries>`；点「去同意」后清除「被拦下」标记，下次录音重新试系统识别。
 
 ### 1.2.2
 
