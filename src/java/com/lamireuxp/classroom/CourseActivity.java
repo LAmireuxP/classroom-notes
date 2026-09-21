@@ -15,6 +15,7 @@ import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -167,9 +168,12 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     // ================== UI ==================
 
     private void buildUi() {
+        // 外面套一层 FrameLayout：FAB 要浮在内容右下角，和主页面同一套操作
+        FrameLayout rootFrame = new FrameLayout(this);
+        rootFrame.setBackgroundColor(Ui.surface(this));
         LinearLayout page = Ui.column(this);
-        page.setBackgroundColor(Ui.surface(this));
-        setContentView(page);
+        rootFrame.addView(page);
+        setContentView(rootFrame);
         pageRoot = page;
 
         // 顶栏 + 状态栏内边距（只在内容确实画到状态栏下面时才补）
@@ -186,9 +190,18 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
 
         LinearLayout body = Ui.column(this);
         int bp = Ui.dp(this, 16);
-        body.setPadding(bp, Ui.dp(this, 4), bp, Ui.dp(this, 32));
+        // 底部留出 FAB 的滚动余量，最后一行才不会被加号压住
+        body.setPadding(bp, Ui.dp(this, 4), bp, Ui.dp(this, 96));
         sv.addView(body);
         page.addView(sv);
+
+        // FAB：建当前页签对应的东西——笔记页签建笔记，待办页签建待办
+        Ui.placeFab(rootFrame, Ui.fab(this, "新建", new Runnable() {
+            @Override public void run() {
+                if ("notes".equals(tab)) noteDialog(null);
+                else todoDialog();
+            }
+        }));
 
         // 搜索（带图标）
         LinearLayout searchBox = Ui.searchBarWithIcon(this, "在「" + course.name + "」中搜索",
@@ -202,10 +215,15 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                 if ("notes".equals(tab) && !isRecording()) renderContent();
             }
         });
-        body.addView(searchBox);
-
+        // 页签在上、搜索框在下：切换内容类型比搜索更「外层」，
+        // 搜索只作用于当前那一类内容
         tabBar = Ui.row(this);
         body.addView(tabBar);
+
+        LinearLayout.LayoutParams sbp =
+                (LinearLayout.LayoutParams) searchBox.getLayoutParams();
+        sbp.topMargin = Ui.v(this, 10);          // 与页签的间距（下方边距在 Ui 里已给）
+        body.addView(searchBox);
 
         content = Ui.column(this);
         LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
@@ -377,12 +395,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         });
         actions.addView(recBtn);
         actions.addView(Ui.spacer(this));
-
-        LinearLayout addBtn = Icons.iconTextButton(this, R.drawable.ic_add, "新建笔记", 0);
-        addBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { noteDialog(null); }
-        });
-        actions.addView(addBtn);
+        // 「新建笔记」挪到右下角 FAB 了（和主页面一致），这一行只剩录音
 
         LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -404,7 +417,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         if (notes.isEmpty()) {
             content.addView(emptyState(R.drawable.ic_md,
                     query.length() > 0 ? "没有匹配的笔记" : "记录第一节课",
-                    query.length() > 0 ? "试试换个关键词" : "点「新建笔记」写下课堂要点"));
+                    query.length() > 0 ? "试试换个关键词" : "点右下角加号写下课堂要点"));
             return;
         }
         for (Db.Note n : notes) content.addView(noteRow(n));
@@ -591,23 +604,10 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     // ================== 待办 ==================
 
     private void renderTodos() {
-        LinearLayout actions = Ui.row(this);
-        actions.addView(Ui.spacer(this));
-        LinearLayout addBtn = Icons.iconTextButton(this, R.drawable.ic_add, "新建待办", 0);
-        addBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { todoDialog(); }
-        });
-        actions.addView(addBtn);
-        LinearLayout.LayoutParams ap = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        ap.bottomMargin = Ui.v(this, 18);
-        actions.setLayoutParams(ap);
-        content.addView(actions);
-
         List<Db.Todo> todos = db.todos(courseId);
         if (todos.isEmpty()) {
             content.addView(emptyState(R.drawable.ic_list, "添加第一个待办",
-                    "把作业和复习拆成小任务，逐个完成"));
+                    "点右下角加号，把作业和复习拆成小任务"));
             return;
         }
 

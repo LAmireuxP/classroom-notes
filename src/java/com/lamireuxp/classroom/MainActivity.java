@@ -162,18 +162,11 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         column.addView(scroller);
 
         // ---------- FAB（MD3 标准：56dp，距边缘 16dp）----------
-        fab = createFab();
-        FrameLayout.LayoutParams fp = new FrameLayout.LayoutParams(
-                Ui.dp(this, 56), Ui.dp(this, 56));
-        fp.gravity = Gravity.END | Gravity.BOTTOM;
-        fp.rightMargin = Ui.dp(this, 16);
-        // 底部 = 16dp + 导航栏高度，确保不被系统栏遮挡
-        fp.bottomMargin = Ui.v(this, 16) + navBarHeight();
-        fab.setLayoutParams(fp);
-        fab.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { courseDialog(null); }
+        // 和课程页共用 Ui.fab / Ui.placeFab：两处的「新建」是同一套操作
+        fab = Ui.fab(this, "新建课程", new Runnable() {
+            @Override public void run() { courseDialog(null); }
         });
-        rootFrame.addView(fab);
+        Ui.placeFab(rootFrame, fab);
 
         setContentView(rootFrame);
     }
@@ -221,30 +214,6 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         return bar;
     }
 
-    private LinearLayout createFab() {
-        LinearLayout f = new LinearLayout(this);
-        f.setGravity(Gravity.CENTER);
-        f.setBackground(Ui.ripple(this, Ui.primary(this), Ui.R_L));
-        Ui.elevation(f, 6);
-        f.setClickable(true);
-        f.setFocusable(true);
-        f.setContentDescription("新建课程");
-        f.addView(Icons.icon(this, R.drawable.ic_add, Ui.onPrimary(this), 24));
-        return f;
-    }
-
-    // ---------- 系统栏高度（edge-to-edge inset）----------
-
-    /** 导航栏高度（px）；手势导航时通常较小。 */
-    private int navBarHeight() {
-        int id = getResources().getIdentifier("navigation_bar_height", "dimen", "android");
-        if (id > 0) {
-            int h = getResources().getDimensionPixelSize(id);
-            if (h > 0) return h;
-        }
-        return Ui.dp(this, 24);
-    }
-
     // ================== 渲染 ==================
 
     private void refresh() {
@@ -252,14 +221,8 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
 
         List<Db.Course> courses = db.courses();
 
-        // ---- 统计摘要（仅在有课程时显示）----
-        // ---- 统计摘要（有待办时才出现；课程/笔记数在「我的课程」标题右边）----
-        if (!courses.isEmpty()) {
-            View stats = statsSummary();
-            if (stats != null) contentBox.addView(stats);
-        }
-
         // ---- 搜索栏（MD3 SearchBar + 前导图标）----
+        // 排在待办进度前面：搜索是「现在就要用」的，进度是「顺便看一眼」的
         LinearLayout searchBox = Ui.searchBarWithIcon(this, "搜索笔记…", R.drawable.ic_search);
         search = Ui.searchInput(searchBox);
         if (query.length() > 0) search.setText(query);
@@ -272,6 +235,12 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
             }
         });
         contentBox.addView(searchBox);
+
+        // ---- 统计摘要（有待办时才出现；课程/笔记数在「我的课程」标题右边）----
+        if (!courses.isEmpty()) {
+            View stats = statsSummary();
+            if (stats != null) contentBox.addView(stats);
+        }
 
         contentBox.addView(courseListContainer());
     }

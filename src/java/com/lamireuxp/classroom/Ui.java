@@ -17,6 +17,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.PathInterpolator;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -154,7 +155,7 @@ public final class Ui {
         return dp(c, 24);
     }
 
-    /**
+/**
      * 给顶栏补状态栏的内边距——**只在内容真的画到状态栏下面时才补**。
      *
      * 实测（Redmi M2007J3SC / Android 17 / targetSdk 33）：窗口 frame 是整屏
@@ -176,6 +177,50 @@ public final class Ui {
                         bar.getPaddingRight(), bar.getPaddingBottom());
             }
         });
+    }
+
+    /** 导航栏高度（px）；手势导航时通常较小。FAB 的底部边距要用它。 */
+    public static int navBarHeight(Context c) {
+        int id = c.getResources().getIdentifier("navigation_bar_height", "dimen", "android");
+        if (id > 0) {
+            int h = c.getResources().getDimensionPixelSize(id);
+            if (h > 0) return h;
+        }
+        return dp(c, 48);
+    }
+
+    // ================= 右下角 FAB =================
+
+    /**
+     * 右下角的加号：主页面建课程，课程页建当前页签的东西（笔记 / 待办）。
+     *
+     * 抽出来是因为两处的「新建」必须是同一套操作——原来课程页用的是页签下面的文字按钮
+     * （「新建笔记」「新建待办」各一个），主页面用的是右下角加号，同一个 App 里两套写法。
+     */
+    public static LinearLayout fab(Context c, String desc, final Runnable onClick) {
+        LinearLayout f = new LinearLayout(c);
+        f.setGravity(Gravity.CENTER);
+        f.setBackground(ripple(c, primary(c), R_L));
+        elevation(f, 6);
+        f.setClickable(true);
+        f.setFocusable(true);
+        f.setContentDescription(desc);
+        f.addView(Icons.icon(c, R.drawable.ic_add, onPrimary(c), 24));
+        f.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { onClick.run(); }
+        });
+        return f;
+    }
+
+    /** 把 FAB 摆到右下角（16dp 边距 + 导航栏高度，免得被系统栏压住）。 */
+    public static void placeFab(FrameLayout root, View fab) {
+        Context c = root.getContext();
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(dp(c, 56), dp(c, 56));
+        lp.gravity = Gravity.END | Gravity.BOTTOM;
+        lp.rightMargin = dp(c, 16);
+        lp.bottomMargin = v(c, 16) + navBarHeight(c);
+        fab.setLayoutParams(lp);
+        root.addView(fab);
     }
 
     /**
