@@ -18,6 +18,8 @@ import android.widget.LinearLayout;
 public class TsSettingsActivity extends BaseSettingsActivity {
 
     private String mode;
+    /** 「把地址和 Key 同步给 AI 总结」开关。off 模式下不显示（没有可同步的内容）。 */
+    private boolean syncAi = true;
     private EditText endpointField;
     private EditText keyField;
     private EditText modelField;
@@ -27,7 +29,10 @@ public class TsSettingsActivity extends BaseSettingsActivity {
     @Override protected void fillBody(LinearLayout body) {
         // 只在第一次填内容时从偏好取。不能每次都读——换主题或切方式都会重建 body，
         // 每次都读的话会把用户在界面上刚选的、还没保存的值覆盖回去。
-        if (mode == null) mode = Prefs.tsMode(this);
+        if (mode == null) {
+            mode = Prefs.tsMode(this);
+            syncAi = Prefs.aiSyncFromTs(this);
+        }
 
         body.addView(sectionTitle("转写方式"));
         body.addView(modeRow("关闭", "只用系统语音识别，不保留录音", "off"));
@@ -45,6 +50,9 @@ public class TsSettingsActivity extends BaseSettingsActivity {
                     Prefs.tsEndpoint(this));
             keyField = labeledField("API Key", "（可选）", Prefs.tsKey(this));
             modelField = labeledField("模型名", "whisper-1", Prefs.tsModel(this));
+            body.addView(sectionTitle("连接"));
+            body.addView(connectionTester(endpointField, keyField));
+            body.addView(syncRow());
         }
 
         // 保存按钮任何模式下都要有——「关闭」也是一种需要提交的状态。
@@ -149,6 +157,47 @@ public class TsSettingsActivity extends BaseSettingsActivity {
         return et == null ? fallback : et.getText().toString();
     }
 
+    /**
+     * 「同步给 AI 总结」开关行。两个设置页要填的是同一类东西（OpenAI 兼容的地址 + Key），
+     * 分别填两遍纯属重复；但同步必须是**单向**的——AI 总结那边改了不该回流到转写，
+     * 否则一边填个纯对话 API（DeepSeek 之类）就会把转写配置悄悄弄坏。
+     */
+    private View syncRow() {
+        LinearLayout row = Ui.row(this);
+        row.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 12));
+        row.setBackground(Ui.ripple(this, Color.TRANSPARENT, Ui.R_S));
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setMinimumHeight(Ui.dp(this, 52));
+        Ui.pressScale(row);
+
+        LinearLayout mid = Ui.column(this);
+        mid.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        mid.addView(Ui.text(this, "同步给「AI 总结」设置", Ui.T_BODY + 1,
+                syncAi ? Ui.primary(this) : Ui.onSurface(this), syncAi));
+        mid.addView(Ui.text(this, "保存时抄地址和 Key 给 AI 总结（模型名不动）",
+                Ui.T_LABEL, Ui.onSurfaceVariant(this), false));
+        row.addView(mid);
+        // 对勾固定 18dp 宽放在行尾，配合 mid 的 weight=1 把文字挤压换行，
+        // 不会再出现两行说明文字盖到图标下面
+        android.widget.ImageView check = Icons.icon(this, R.drawable.ic_check, Ui.primary(this), 18);
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                Ui.dp(this, 18), Ui.dp(this, 18));
+        clp.leftMargin = Ui.dp(this, 12);
+        clp.gravity = android.view.Gravity.CENTER_VERTICAL;
+        check.setLayoutParams(clp);
+        check.setVisibility(syncAi ? android.view.View.VISIBLE : android.view.View.INVISIBLE);
+        row.addView(check);
+
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                syncAi = !syncAi;   // 和 modeRow 一样：只改内存，落盘统一在「保存」
+                applyTheme();
+            }
+        });
+        return row;
+    }
+
     private void save() {
         if ("off".equals(mode)) {
             // 关掉时保留地址等配置，下次开回来不用重填
@@ -163,9 +212,11 @@ public class TsSettingsActivity extends BaseSettingsActivity {
             Tip.error(this, "该方式需要填写服务地址");
             return;
         }
-        Prefs.saveTs(this, mode, endpoint, keyField.getText().toString(),
-                modelField.getText().toString());
-        Tip.success(this, "转写设置已保存");
+        String key = keyField.getText().toString().trim();
+        Prefs.saveTs(this, mode, endpoint, key, modelField.getText().toString());
+        Prefs.setAiSyncFromTs(this, syncAi);
+        if (syncAi) Prefs.syncAiFromTs(this, endpoint, key);
+        Tip.success(this, syncAi ? "转写设置已保存，已同步到 AI 总结" : "转写设置已保存");
         finish();
     }
 }

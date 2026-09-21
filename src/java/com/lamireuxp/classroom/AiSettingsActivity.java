@@ -24,6 +24,16 @@ public class AiSettingsActivity extends BaseSettingsActivity {
         keyField = labeledField("API Key", "sk-…", Prefs.aiKey(this));
         modelField = labeledField("模型", "deepseek-chat", Prefs.aiModel(this));
 
+        body.addView(sectionTitle("连接"));
+        body.addView(connectionTester(endpointField, keyField));
+
+        // 说清两个设置的关系：转写保存时会把地址 + Key 抄过来（可在转写设置里关掉），
+        // 这里改了不会反向影响转写——不然用户会以为两处永远必须手填两遍一样的。
+        body.addView(Ui.text(this,
+                "「语音转写设置 → API 直连」保存时会把地址和 Key 同步到这里（可在转写设置里关闭）；"
+                        + "这里的修改不会影响转写。",
+                Ui.T_LABEL, Ui.onSurfaceVariant(this), false));
+
         body.addView(saveButton("保存", new Runnable() {
             @Override public void run() { save(); }
         }));

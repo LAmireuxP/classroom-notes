@@ -1087,7 +1087,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         final String key = Prefs.tsKey(this);
         final String model = Prefs.tsModel(this);
         if ("off".equals(Prefs.tsMode(this)) || ep.length() == 0) {
-            Tip.error(this, "未识别到文字，且未配置转写服务");
+            Tip.error(this, "未识别到文字，且云端转写未开启（设置 → 语音转写设置）");
             return;
         }
         showLoading("正在上传录音并转写…");
@@ -1108,7 +1108,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                         @Override public void run() {
                             hideLoading();
                             Tip.error(CourseActivity.this,
-                                    "转写失败：" + (e.getMessage() == null ? "网络错误" : e.getMessage()));
+                                    "转写失败：" + Net.humanize(e));
                         }
                     });
                 }
@@ -1146,7 +1146,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                         @Override public void run() {
                             hideLoading();
                             Tip.error(CourseActivity.this,
-                                    "AI 总结失败：" + (e.getMessage() == null ? "未知错误" : e.getMessage()));
+                                    "AI 总结失败：" + Net.humanize(e));
                         }
                     });
                 }

@@ -80,6 +80,21 @@ public class Prefs {
                 .apply();
     }
 
+    // ---------- 转写 → AI 总结的单向同步 ----------
+    // 两个设置页填的本来就是同一类东西（OpenAI 兼容的地址 + Key）。保存转写时顺带抄给
+    // AI 总结；反过来 AI 总结改了不影响转写。开关默认开，用户可在转写设置里关掉。
+    public static boolean aiSyncFromTs(Context c) { return sp(c).getBoolean("ts_sync_ai", true); }
+
+    public static void setAiSyncFromTs(Context c, boolean on) {
+        sp(c).edit().putBoolean("ts_sync_ai", on).apply();
+    }
+
+    /** 地址照抄；Key 为空时保留 AI 总结里已有的——自建服务常不用 Key，别把配好的冲掉。 */
+    public static void syncAiFromTs(Context c, String endpoint, String key) {
+        String k = key == null ? "" : key.trim();
+        saveAi(c, endpoint, k.length() == 0 ? aiKey(c) : k, aiModel(c));
+    }
+
     private static String trimSlash(String s) {
         if (s == null) return "";
         String t = s.trim();

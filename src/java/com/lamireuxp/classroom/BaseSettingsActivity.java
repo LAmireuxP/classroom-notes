@@ -5,6 +5,7 @@ import android.content.res.Configuration;
 import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -150,6 +151,62 @@ public abstract class BaseSettingsActivity extends Activity {
         btn.setMinHeight(Ui.dp(this, 46));
         btn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { onSave.run(); }
+        });
+        return btn;
+    }
+
+    /**
+     * 「测试连接」按钮：向 {服务地址}/models 发一个 GET。OpenAI 兼容服务基本都实现这个接口，
+     * 当场就能知道地址和 Key 通不通，而不是录完一节课才发现 404。
+     *
+     * 结果写在按钮文案上而不是只弹 Tip——Tip 两秒多就没了，验证结果值得留在屏上让人看仔细。
+     */
+    protected View connectionTester(final EditText endpointField, final EditText keyField) {
+        final TextView btn = Ui.textButton(this, "测试连接（GET /models）");
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = Ui.dp(this, 6);
+        btn.setLayoutParams(lp);
+        btn.setMinHeight(Ui.dp(this, 44));
+        btn.setGravity(android.view.Gravity.CENTER);
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                String base = endpointField.getText().toString().trim();
+                while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+                if (base.length() == 0) {
+                    Tip.error(BaseSettingsActivity.this, "先填写服务地址");
+                    return;
+                }
+                final String url = base;
+                final String key = keyField.getText().toString().trim();
+                btn.setEnabled(false);
+                btn.setText("测试中…");
+                new Thread(new Runnable() {
+                    @Override public void run() {
+                        String ok = null;
+                        String err = null;
+                        try {
+                            ok = Net.probe(url, key);
+                        } catch (Throwable e) {
+                            err = Net.humanize(e);
+                        }
+                        final String fOk = ok;
+                        final String fErr = err;
+                        runOnUiThread(new Runnable() {
+                            @Override public void run() {
+                                btn.setEnabled(true);
+                                if (fOk != null) {
+                                    btn.setText("✓ " + fOk);
+                                    Tip.success(BaseSettingsActivity.this, "服务连接正常");
+                                } else {
+                                    btn.setText("✗ 连接失败");
+                                    Tip.error(BaseSettingsActivity.this, "连接失败：" + fErr);
+                                }
+                            }
+                        });
+                    }
+                }).start();
+            }
         });
         return btn;
     }

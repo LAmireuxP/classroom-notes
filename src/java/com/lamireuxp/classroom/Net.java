@@ -169,7 +169,8 @@ public final class Net {
 
             int code = conn.getResponseCode();
             String resp = readAll(code >= 400 ? conn.getErrorStream() : conn.getInputStream());
-            if (code >= 400) throw new Exception(friendlyError(code, resp));
+            if (code >= 400) throw new Exception(friendlyError(code, resp)
+                    + (code == 404 ? "；转写走 /audio/transcriptions，纯对话 API（如 DeepSeek）不提供这个接口" : ""));
             JSONObject o = new JSONObject(resp);
             String text = o.optString("text", "").trim();
             if (text.length() == 0) throw new Exception("服务返回内容为空");
@@ -177,6 +178,62 @@ public final class Net {
         } finally {
             conn.disconnect();
         }
+    }
+
+    /**
+     * 连通性自检：GET {base}/models。OpenAI 兼容服务基本都实现这个接口，
+     * 点一下当场就知道「地址 + Key」通不通——录完 40 分钟才发现 404 的代价太大。
+     *
+     * @return 一行可直接展示的成功文案
+     * @throws Exception 失败原因已翻译成中文（配合 humanize 在 UI 层处理）
+     */
+    public static String probe(String endpoint, String key) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(endpoint + "/models").openConnection();
+        try {
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(15000);
+            if (key != null && key.length() > 0) {
+                conn.setRequestProperty("Authorization", "Bearer " + key);
+            }
+            int code = conn.getResponseCode();
+            String resp = readAll(code >= 400 ? conn.getErrorStream() : conn.getInputStream());
+            if (code >= 400) {
+                if (code == 401 && (key == null || key.length() == 0)) {
+                    // 没填 Key 的 401 是好消息：地址和网络都通了，就差 Key
+                    throw new Exception("地址可达、服务在线，但该服务要求填写 API Key");
+                }
+                String msg = friendlyError(code, resp);
+                if (code == 404) {
+                    msg += "；确认地址填的是 API 根（如 https://api.openai.com/v1），不是完整接口路径";
+                }
+                throw new Exception(msg);
+            }
+            try {
+                JSONArray data = new JSONObject(resp).optJSONArray("data");
+                if (data != null) return "服务在线，可用模型 " + data.length() + " 个";
+            } catch (Exception ignored) {}
+            return "服务在线";
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    /**
+     * 把底层网络异常翻译成人话。SSLException / UnknownHostException 的原文对中文用户
+     * 等于没说；这层映射不求全，把课堂场景真正常见的几种盖住就行。
+     */
+    public static String humanize(Throwable e) {
+        String m = e.getMessage();
+        if (m == null || m.length() == 0) return e.getClass().getSimpleName();
+        String l = m.toLowerCase();
+        if (l.contains("unable to resolve host")) return "域名解析失败：检查服务地址拼写，或手机网络";
+        if (l.contains("connection refused")) return "服务拒绝连接：端口不对，或服务没启动";
+        if (l.contains("timed out") || l.contains("timeout")) return "连接超时：服务地址不可达";
+        if (l.contains("ssl") || l.contains("handshake") || l.contains("certificate"))
+            return "HTTPS 握手失败：证书异常，或网络被劫持";
+        if (l.contains("cleartext")) return "明文 HTTP 被系统拒绝：请把地址改成 https://";
+        return m;
     }
 
     private static void writeField(ByteArrayOutputStream out, String boundary, String name, String value)
