@@ -8,9 +8,20 @@
 本项目源自 **[@lkx478482771-star](https://github.com/lkx478482771-star)** 的开源项目「课堂整理」：
 课程、笔记、待办的数据结构与整体交互设计都来自原作者，感谢他的开源分享。
 
-本仓库是它在 Android 上的原生实现：v2.0 的原生重写（SQLite 存储、系统 SpeechRecognizer、
-Material Design 3 界面）完整保留，并在此基础上继续维护——云转写上传的 MIME 修正、
-Windows 构建脚本 `build-pc.sh`，以及 1.1 的语音识别修复与设置页重构。
+本仓库是它的原生 Java 重写。原版是 Capacitor + WebView 壳，几项核心能力在 WebView 里直接失效
+（`webkitSpeechRecognition` 不存在，录音转写整块废掉；blob 下载静默失败，导出点了没反应），
+所以这里改用系统原生实现，同时保持零第三方依赖：
+
+| 项目 | 原版（Capacitor 网页壳） | 现在 |
+| --- | --- | --- |
+| 技术栈 | Capacitor + WebView + 前端 JS | 原生 Java + Android SDK，零依赖 |
+| 数据存储 | localStorage（JSON 整存整取） | SQLite（增量读写 + 索引） |
+| 语音识别 / 录音 | Web Speech API，WebView 不支持 | 系统 SpeechRecognizer + 原生 MediaRecorder |
+| 导入导出 | `a.download`，WebView 里点不动 | SAF 系统文件选择器 |
+| APK 体积 | 3.7 MB | 约 187 KB |
+
+在此基础上的继续维护（云转写上传的 MIME 修正、Windows 构建脚本 `build-pc.sh`、语音识别修复、
+设置页重构等）记在下方「更新日志」。
 
 ## 功能
 
@@ -40,29 +51,7 @@ AsrService: onStartListening: isCTAAllow=false …
 AsrService: onDestroy        ← 服务不放行，随即自毁，App 收到 ERROR_SERVER_DISCONNECTED
 ```
 
-同版本 HyperOS 4 的两台机器实测结果就不一样：一台正常实时出字，一台三个键
-（`xiaoai_cta_change` / `soundrecorder_cta_net_accepted` / `soundrecorder_cta_permission_accepted`）
-都是「没同意过」的状态，识别直接被拒。**系统设置里没有能让第三方 App 通过的开关**，
-只能去厂商那一侧同意一次：
-
-| 厂商 | 同意入口 |
-| --- | --- |
-| 小米 / 红米（MIUI） | 小爱同学 → 我的 → 设置（隐私 / 跨应用语音识别）。MIUI 未实测，识别服务与判定机制同澎湃 OS |
-| 小米 / 红米（澎湃 OS / HyperOS） | 同上，见下方实测说明 |
-| OPPO / 一加 | 小布助手 → 设置 |
-| vivo | Jovi 语音 → 设置 |
-| 华为 / 荣耀 | 小艺 → 设置 |
-| 其他 | 系统设置 → 语音输入（`android.settings.VOICE_INPUT_SETTINGS`） |
-
-**澎湃 OS（HyperOS）实测补充**：设备上唯一的识别服务是
-`com.xiaomi.mibrain.speech/.asr.AsrService`（`isDefault=true`，且机器上没有装任何其它
-RecognitionService），所以 App 里"默认服务优先、显式组件兜底"的两条路都落在同一个服务上，
-它不放行就没有第二条可走。同意状态记在 `Settings.Global` 的几个键上
-（`xiaoai_cta_change`、`soundrecorder_cta_net_accepted`、`soundrecorder_cta_permission_accepted`），
-**不同机型 / 不同 OS 小版本取值不一样，键名也可能随版本变动**，所以 App 不去读它们猜状态，
-只在识别真的被拒时把用户送到语音助手那边。
-
-同为 HyperOS 4 / Android 17（SDK 37）的两台机器实测结果就相反，可见这是**按设备**而不是按
+同为 HyperOS 4 / Android 17（SDK 37）的两台机器结果就相反，可见这是**按设备**、而不是按
 ROM 版本的策略：
 
 | 机型 | OS 版本 | 结果 |
@@ -70,16 +59,31 @@ ROM 版本的策略：
 | Redmi M2007J3SC | OS4.0.0.7 | 实时识别正常出字 |
 | Redmi 22127RK46C | OS4.0.0.26 | `isCTAAllow=false` 直接拒绝并自毁 |
 
+被拒的机器上，唯一的识别服务是 `com.xiaomi.mibrain.speech/.asr.AsrService`（`isDefault=true`，
+且没装任何其它 RecognitionService），所以「默认服务优先、显式组件兜底」两条路落在同一个服务上，
+它不放行就没有第二条可走。**系统设置里没有能让第三方 App 通过的开关**，只能去厂商那一侧
+同意一次：
+
+| 厂商 | 同意入口 |
+| --- | --- |
+| 小米 / 红米 | 小爱同学 → 我的 → 设置（隐私 / 跨应用语音识别）。MIUI 未实测，判定机制与澎湃 OS 相同 |
+| OPPO / 一加 | 小布助手 → 设置 |
+| vivo | Jovi 语音 → 设置 |
+| 华为 / 荣耀 | 小艺 → 设置 |
+| 其他 | 系统设置 → 语音输入（`android.settings.VOICE_INPUT_SETTINGS`） |
+
+同意状态记在 `Settings.Global` 的几个键上（`xiaoai_cta_change`、
+`soundrecorder_cta_net_accepted`、`soundrecorder_cta_permission_accepted`），
+**取值随机型 / OS 小版本变化，键名也可能随版本变动**，所以 App 不去读它们猜状态，
+只在识别真的被拒时把用户送到语音助手那边。
+
 App 里的对应行为：
 
 - 识别被设备侧拦下（**一次回调都没给过就被拒**）时，录音页**主动弹一个模态引导框**（不是会消失
-  的提示条），主按钮「去同意」直接拉起厂商授权页：优先试小米识别服务自带的授权弹窗
-  （`com.xiaomi.mibrain.speech.cta`，实测可被外部唤起），再依次试厂商语音助手
-  （`com.miui.voiceassist`、`com.heytap.speechassist`、`com.coloros.speechassist`、
-  `com.vivo.voiceassist`、`com.vivo.ai`、`com.huawei.vassistant`、`com.hihonor.vassistant`、
-  `com.meizu.voiceassist`、`com.samsung.android.bixby.agent`），最后兜底到系统「语音输入」设置页。
-  这些入口全部写进了 manifest 的 `<queries>`——targetSdk ≥ 30 的包可见性过滤会让没声明的包解析不到，
-  点了等于没点。
+  的提示条），主按钮「去同意」依次尝试：小米识别服务自带的授权弹窗
+  （`com.xiaomi.mibrain.speech.cta`，实测可被外部唤起）→ 各家厂商语音助手（小米 / OPPO / 一加 /
+  vivo / 华为 / 荣耀 / 魅族 / 三星）→ 系统「语音输入」设置页。这些入口全部写进了 manifest 的
+  `<queries>`——targetSdk ≥ 30 的包可见性过滤会让没声明的包解析不到，点了等于没点。
 - 引导是**主动**的：授权是恢复实时识别的唯一出路，不能赌用户看得见一条小提示。除了录音时弹框，
   「设置 → 语音转写设置」底部还有一个常驻的**「打开厂商授权页」**入口——用户当场点了「稍后」，
   之后也能自己找到地方，而不是这条路只响一次。
@@ -89,8 +93,36 @@ App 里的对应行为：
 - **无论哪种设备，录音都不会因为识别失败被丢掉**：识别用不了时会话降级成纯录音继续跑，
   结束后自动走云端转写。
 
-兜底路线（任何设备都能用）：设置 → 语音转写设置 → 服务端转写 / API 直连，把录音上传到
-自建的 whisper.cpp 或任意 OpenAI 兼容转写接口。
+## 云端转写（任何设备都能用的兜底）
+
+设置 → 语音转写设置，三选一：
+
+| 模式 | 说明 |
+| --- | --- |
+| 关闭 | 只用系统语音识别，不保留录音 |
+| 服务端转写 | 把录音上传到自建服务转写，填 `http://192.168.1.10:8080/v1` 这类**根地址** |
+| API 直连 | 把录音上传到云 API，填地址 + Key（OpenAI 兼容的 `/audio/transcriptions`） |
+
+两个设置页都有「测试连接（GET /models）」：向 `{地址}/models` 发一次 GET，当场告诉你地址 / Key
+通不通，不用录完一节课才发现 404。注意要填根地址而不是完整接口路径——`/audio/transcriptions`
+是转写接口，纯对话 API（如 DeepSeek）不提供它，填了也只会 404。
+
+自建服务用 whisper.cpp、FunASR 等任意实现了 OpenAI 兼容转写接口的服务都可以。
+
+## 代码结构
+
+`src/java/com/lamireuxp/classroom/`，约 5500 行 / 21 个文件：
+
+- `MainActivity`：首页课程列表 / 搜索 / 统计 / 导入导出，课程菜单底部抽屉
+- `CourseActivity`：课程详情——笔记 / 待办 / 录音 / AI 总结
+- `SpeechSession`：语音会话——系统识别 + 原生录音，识别被拒时降级成纯录音
+- `VoiceAuth`：厂商授权页入口链（小米 CTA → 各厂商语音助手 → 系统语音输入设置）
+- `Db` / `Backup`：SQLite 数据层；JSON 备份导入导出、Markdown 导出（SAF）
+- `Net`：网络层——AI 总结 / 云转写 / 连接自检（HttpURLConnection）
+- `Prefs`：设置存储——主题、转写模式与地址 Key、AI 配置（含转写 → AI 的单向同步）
+- `SettingsActivity` / `TsSettingsActivity` / `AiSettingsActivity` / `BaseSettingsActivity`：设置页与公共基类
+- `Ui` / `Dialogs` / `Icons` / `Tip` / `Loading` / `ThemeSwitch`：设计系统与控件（色 token、弹窗、图标、底部状态药丸、加载条、主题开关）
+- `Dates` / `Id` / `Extract`：日期、ID 生成、本地关键词提取（AI 不可用时的兜底）
 
 ## 更新日志
 
@@ -108,11 +140,11 @@ App 里的对应行为：
 ### 1.2.3
 
 - **语音授权改为主动弹出**：识别被厂商策略拦下（小米 CTA / 机型白名单这类，表现是给了麦克风权限
-  但识别服务零回调直接拒绝）时，不再只在一条会消失的提示条上挂个「去授权」按钮——录音页**主动弹模态
-  引导框**，一键把授权页拉起来；并在「设置 → 语音转写设置」底部加了**常驻的「打开厂商授权页」入口**，
-  当场点了「稍后」的用户之后也能自己找到。这是修「换设备就调用不了、还得用户自己去 adb 唤醒协议」的问题。
-- 授权入口新增小米识别服务自带弹窗（`com.xiaomi.mibrain.speech.cta`）为第一优先，厂商语音助手为兜底，
-  并补进 manifest `<queries>`；点「去同意」后清除「被拦下」标记，下次录音重新试系统识别。
+  但识别服务零回调直接拒绝）时，不再只在一条会消失的提示条上挂「去授权」按钮——录音页**主动弹模态
+  引导框**，一键把授权页拉起来；「设置 → 语音转写设置」底部同时加了**常驻的「打开厂商授权页」
+  入口**，当场点了「稍后」的用户之后也能自己找到。授权入口新增小米识别服务自带弹窗
+  （`com.xiaomi.mibrain.speech.cta`）为第一优先，厂商语音助手兜底，并补进 manifest `<queries>`；
+  点「去同意」后清除「被拦下」标记，下次录音重新试系统识别。
 
 ### 1.2.2
 
@@ -122,7 +154,7 @@ App 里的对应行为：
   颜色只花在该注意的地方；同屏只留一条，新的顶掉旧的，不再叠罗汉。
 - **操作反馈统一成语义态**：所有「写入完成」提示（创建 / 更新 / 删除 / 保存 / 导入导出）统一走
   成功态绿勾，不再和中性信息混用一种样式。
-- **修复课程菜单抽屉选完不关**：点「更多 → 删除课程」时，底部抽屉不关，确认框关掉后会露出一层
+- **修复课程菜单抽屉选完不关**：点「更多 → 删除课程」时底部抽屉不关，确认框关掉后会露出一层
   内容对不上的 stale 抽屉。现在选中动作即收起抽屉。
 
 ### 1.2.1
@@ -136,19 +168,15 @@ App 里的对应行为：
   （挂在 `state_pressed` 上的系统正规机制），完全退出触摸链路，涟漪 / 点击 / 将来任何手势都不再冲突。
   行为肉眼无差别。
 - **批量写入优化**：
-  - 单条写入 `saveCourse/saveNote/saveTodo` 不再「先 SELECT 判存在」，
-    改用 `update()` 返回的**受影响行数**判定（`rows == 0` 即不存在）。每条语句少一次查询，
-    同时消除了「查完到写之间那行被删掉」的竞态。
-  - 新增 `Db.replaceAll()`：导入专用，清空 + 重建全程一个事务，用预编译语句（`compileStatement`）
-    批量写，且完全不查存在性（导入本就先清空，表里必然没有这些 id）。
-  - `Backup.importJson()` 改为调用它。顺带**去掉了外层事务里嵌套内层事务**：
-    `deleteCourse()` 自带事务，嵌在外层里一旦失败只回滚内层、外层照常提交，会留下半新半旧的库。
+  - 单条写入 `saveCourse/saveNote/saveTodo` 不再「先 SELECT 判存在」，改用 `update()` 返回的
+    **受影响行数**判定（`rows == 0` 即不存在）：每条语句少一次查询，同时消除了「查完到写之间
+    那行被删掉」的竞态。
+  - 新增 `Db.replaceAll()`：导入专用，清空 + 重建全程一个事务，用预编译语句批量写，且完全不查
+    存在性。顺带**去掉了外层事务里嵌套内层事务**：`deleteCourse()` 自带事务，嵌在外层里一旦失败
+    只回滚内层、外层照常提交，会留下半新半旧的库。
   - 实测（10 门课 / 400 条笔记 / 100 条待办）：**82.8 ms → 39.2 ms，约 2.1×**。
-- **清理死代码**：删掉 23 个无调用点的方法（`Ui.success/warning/errorContainer/tertiary/color/label/
-  surfaceLow/outlinedCard/roundStrokeRipple/outlinedButton/tonalButton/button/searchBar/chip/lpMargin/
-  divider/gap/vSpace`、`Icons.textButton/tint`、`Dates.shortFromMillis`、`CourseActivity.textAction` ×2），
-  以及未引用的 `res/drawable/ic_stats.xml` 和 `styles.xml` 里的 `TransparentDialog`，
-  外加 10 条失效 import。净减约 124 行，APK 无功能变化。
+- **清理死代码**：删掉 23 个无调用点的方法、未引用的资源与失效 import，净减约 124 行，
+  APK 无功能变化。
 
 ### 1.2
 
@@ -181,7 +209,7 @@ App 里的对应行为：
 ## 构建
 
 - Windows：`./build-pc.sh`（需 JDK 17 + Android SDK build-tools 34）
-- 手机端原构建配方：`src/build.sh`（未改动）
+- `src/build.sh` 是早期在手机上直接构建的旧配方（签名口令已失效），留作参考，不是发布路径。
 
 ## 签名信息
 
@@ -205,7 +233,7 @@ App 里的对应行为：
 
 ```bash
 keytool -list -keystore keystore.jks -storepass classroom-v2 | grep SHA256
-apksigner verify --print-certs build/课堂笔记-v1.2.1.apk | grep 'SHA-256 digest'
+apksigner verify --print-certs build/课堂笔记-v*.apk | grep 'SHA-256 digest'
 ```
 
 > ⚠️ **密钥必须长期存档（云盘 + 本地各一份）。**
