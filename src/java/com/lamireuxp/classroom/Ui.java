@@ -144,7 +144,7 @@ public final class Ui {
         }
     }
 
-    /** 状态栏高度（px）。edge-to-edge 下给顶栏加内边距用。 */
+    /** 状态栏高度（px）。只在内容确实画到状态栏下面时才需要。 */
     public static int statusBarHeight(Context c) {
         int id = c.getResources().getIdentifier("status_bar_height", "dimen", "android");
         if (id > 0) {
@@ -152,6 +152,30 @@ public final class Ui {
             if (h > 0) return h;
         }
         return dp(c, 24);
+    }
+
+    /**
+     * 给顶栏补状态栏的内边距——**只在内容真的画到状态栏下面时才补**。
+     *
+     * 实测（Redmi M2007J3SC / Android 17 / targetSdk 33）：窗口 frame 是整屏
+     * [0,0][1080,2400]，但 appBounds 从 y=90 开始——系统已经按状态栏把内容压下去了。
+     * 原来无条件再加一次 status_bar_height，等于两份留白，顶栏凭空低了 30dp 左右，
+     * 顶栏「总是显得偏下」就是这么来的。
+     *
+     * 判断依据是可见区域的顶边：>0 说明系统已经让开，不需要补；只有 ==0（真
+     * edge-to-edge）才补。必须在布局之后量——onCreate 里这个值还不可靠。
+     */
+    public static void padStatusBar(final android.app.Activity a, final View bar) {
+        bar.post(new Runnable() {
+            @Override public void run() {
+                android.graphics.Rect r = new android.graphics.Rect();
+                a.getWindow().getDecorView().getWindowVisibleDisplayFrame(r);
+                if (r.top > 0) return;
+                int extra = statusBarHeight(a);
+                bar.setPadding(bar.getPaddingLeft(), bar.getPaddingTop() + extra,
+                        bar.getPaddingRight(), bar.getPaddingBottom());
+            }
+        });
     }
 
     /**

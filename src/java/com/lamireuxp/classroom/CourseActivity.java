@@ -172,11 +172,9 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         setContentView(page);
         pageRoot = page;
 
-        // 顶栏 + 状态栏内边距
+        // 顶栏 + 状态栏内边距（只在内容确实画到状态栏下面时才补）
         View tb = topBar();
-        tb.setPadding(tb.getPaddingLeft(),
-                tb.getPaddingTop() + statusBarHeight(),
-                tb.getPaddingRight(), tb.getPaddingBottom());
+        Ui.padStatusBar(this, tb);
         page.addView(tb);
 
         ScrollView sv = new ScrollView(this);
@@ -1260,13 +1258,4 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
 
     private static String nz(String s) { return s == null ? "" : s; }
 
-    /** 状态栏高度。 */
-    private int statusBarHeight() {
-        int id = getResources().getIdentifier("status_bar_height", "dimen", "android");
-        if (id > 0) {
-            int h = getResources().getDimensionPixelSize(id);
-            if (h > 0) return h;
-        }
-        return Ui.dp(this, 24);
-    }
 }

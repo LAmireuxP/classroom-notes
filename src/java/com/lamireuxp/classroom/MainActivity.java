@@ -142,10 +142,8 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
 
         // ---------- Top App Bar ----------
         View bar = topBar();
-        // 状态栏内边距（edge-to-edge 下内容不被状态栏遮挡）
-        bar.setPadding(bar.getPaddingLeft(),
-                bar.getPaddingTop() + statusBarHeight(),
-                bar.getPaddingRight(), bar.getPaddingBottom());
+        // 状态栏内边距：只在内容确实画到状态栏下面时才补（见 Ui.padStatusBar）
+        Ui.padStatusBar(this, bar);
         column.addView(bar);
 
         // ---------- 可滚动内容 ----------
@@ -236,16 +234,6 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
     }
 
     // ---------- 系统栏高度（edge-to-edge inset）----------
-
-    /** 状态栏高度（px）。 */
-    private int statusBarHeight() {
-        int id = getResources().getIdentifier("status_bar_height", "dimen", "android");
-        if (id > 0) {
-            int h = getResources().getDimensionPixelSize(id);
-            if (h > 0) return h;
-        }
-        return Ui.dp(this, 24);
-    }
 
     /** 导航栏高度（px）；手势导航时通常较小。 */
     private int navBarHeight() {

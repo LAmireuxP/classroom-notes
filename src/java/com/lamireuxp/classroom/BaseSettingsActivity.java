@@ -89,10 +89,8 @@ public abstract class BaseSettingsActivity extends Activity {
         LinearLayout bar = Ui.row(this);
         bar.setBackgroundColor(Ui.surface(this));
         bar.setPadding(Ui.dp(this, 6), Ui.v(this, 10), Ui.dp(this, 12), Ui.v(this, 10));
-        // 状态栏内边距（edge-to-edge 下内容不被状态栏遮挡）
-        bar.setPadding(bar.getPaddingLeft(),
-                bar.getPaddingTop() + Ui.statusBarHeight(this),
-                bar.getPaddingRight(), bar.getPaddingBottom());
+        // 状态栏内边距：只在内容确实画到状态栏下面时才补（见 Ui.padStatusBar）
+        Ui.padStatusBar(this, bar);
 
         LinearLayout back = Icons.iconButton(this, R.drawable.ic_back, 42,
                 Ui.onSurfaceVariant(this));
