@@ -1,7 +1,7 @@
 # 课堂笔记 · Android 原生版
 
 课程笔记、待办、语音转写、AI 总结。纯原生 Java 实现，零第三方依赖，APK 约 187 KB。
-当前版本 **1.2.3**。
+当前版本 **1.2.4**。
 
 ## 致谢
 
@@ -23,7 +23,7 @@ Windows 构建脚本 `build-pc.sh`，以及 1.1 的语音识别修复与设置�
 
 ## 下载
 
-- 应用（国内可直连）：https://lamireuxp.github.io/classroom-notes/dist/classroom-1.2.3.apk
+- 应用（国内可直连）：https://lamireuxp.github.io/classroom-notes/dist/classroom-1.2.4.apk
 - 发布页：https://github.com/LAmireuxP/classroom-notes/releases
 
 从 1.0 起各版本签名一致，可直接覆盖升级，笔记数据不会丢。
@@ -93,6 +93,17 @@ App 里的对应行为：
 自建的 whisper.cpp 或任意 OpenAI 兼容转写接口。
 
 ## 更新日志
+
+### 1.2.4
+
+- **两个 API 设置不再重复填**：保存「语音转写设置 → 服务端 / API 直连」时，默认把**服务地址和
+  Key 单向同步**给「AI 总结」设置（模型名不动，各自保留）。同步带开关可关；AI 总结里的修改
+  不会反向影响转写。转写 Key 留空时同步也不覆盖 AI 总结已有的 Key。
+- **新增「测试连接」**：两个设置页都有，向 `{地址}/models` 发一次 GET，当场告诉你
+  地址 / Key 通不通，不用录完一节课才发现 404。没填 Key 的 401 会明确说「服务在线，就差 Key」。
+- **转写 / AI 报错全部翻译成人话**：UnknownHost、证书、超时、明文拦截等网络异常不再抛英文原文；
+  404 会提示「转写走 /audio/transcriptions，纯对话 API（如 DeepSeek）不提供这个接口」——
+  API 直连跑不通，多数就是这个原因。
 
 ### 1.2.3
 
