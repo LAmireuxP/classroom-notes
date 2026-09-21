@@ -47,11 +47,28 @@ AsrService: onDestroy        ← 服务不放行，随即自毁，App 收到 ERR
 
 | 厂商 | 同意入口 |
 | --- | --- |
-| 小米 / 澎湃 OS | 小爱同学 → 我的 → 设置（隐私 / 跨应用语音识别）；首次使用小爱时的隐私引导也会写入这一项 |
+| 小米 / 红米（MIUI） | 小爱同学 → 我的 → 设置（隐私 / 跨应用语音识别）。MIUI 未实测，识别服务与判定机制同澎湃 OS |
+| 小米 / 红米（澎湃 OS / HyperOS） | 同上，见下方实测说明 |
 | OPPO / 一加 | 小布助手 → 设置 |
 | vivo | Jovi 语音 → 设置 |
 | 华为 / 荣耀 | 小艺 → 设置 |
 | 其他 | 系统设置 → 语音输入（`android.settings.VOICE_INPUT_SETTINGS`） |
+
+**澎湃 OS（HyperOS）实测补充**：设备上唯一的识别服务是
+`com.xiaomi.mibrain.speech/.asr.AsrService`（`isDefault=true`，且机器上没有装任何其它
+RecognitionService），所以 App 里"默认服务优先、显式组件兜底"的两条路都落在同一个服务上，
+它不放行就没有第二条可走。同意状态记在 `Settings.Global` 的几个键上
+（`xiaoai_cta_change`、`soundrecorder_cta_net_accepted`、`soundrecorder_cta_permission_accepted`），
+**不同机型 / 不同 OS 小版本取值不一样，键名也可能随版本变动**，所以 App 不去读它们猜状态，
+只在识别真的被拒时把用户送到语音助手那边。
+
+同为 HyperOS 4 / Android 17（SDK 37）的两台机器实测结果就相反，可见这是**按设备**而不是按
+ROM 版本的策略：
+
+| 机型 | OS 版本 | 结果 |
+| --- | --- | --- |
+| Redmi M2007J3SC | OS4.0.0.7 | 实时识别正常出字 |
+| Redmi 22127RK46C | OS4.0.0.26 | `isCTAAllow=false` 直接拒绝并自毁 |
 
 App 里的对应行为：
 
