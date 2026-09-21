@@ -22,7 +22,7 @@ if ! command -v "$KEYTOOL" >/dev/null 2>&1; then
     if [ -x "$c" ]; then KEYTOOL="$c"; break; fi
   done
 fi
-VER=1.2.4
+VER=1.3
 
 cd "$(dirname "$0")"
 rm -rf build && mkdir -p build/classes build/gen build/dex
