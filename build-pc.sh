@@ -9,6 +9,19 @@ BT="$SDK/build-tools/34.0.0"
 AJ="$SDK/platforms/android-34/android.jar"
 KS=${KEYSTORE:-keystore.jks}
 KS_PASS=${KS_PASS:-classroom-v2}
+# keytool 和 javac 在同一个 JDK 的 bin 里，但 PATH 上常常只有 javac——这台机器的
+# javac 是 Oracle 的 javapath 垫片，旁边就没有 keytool。指纹核对是发布前唯一能发现
+# 「密钥被换掉」的检查（apksigner verify 不比对历史指纹），不能因为找不到工具就跳过。
+KEYTOOL=${KEYTOOL:-keytool}
+if ! command -v "$KEYTOOL" >/dev/null 2>&1; then
+  jcdir=$(dirname "$(command -v javac 2>/dev/null || echo .)")
+  # 注意 Windows 上可执行文件名带 .exe，只试 keytool 是找不到的
+  for c in "$jcdir/keytool.exe" "$jcdir/keytool" \
+           /c/Program\ Files/Java/*/bin/keytool.exe /c/Program\ Files/Java/*/bin/keytool \
+           /c/Program\ Files/Eclipse\ Adoptium/*/bin/keytool.exe; do
+    if [ -x "$c" ]; then KEYTOOL="$c"; break; fi
+  done
+fi
 VER=1.2.4
 
 cd "$(dirname "$0")"
@@ -28,7 +41,21 @@ javac -encoding UTF-8 -source 1.8 -target 1.8 -bootclasspath "$AJ" \
   -classpath "$AJ" -d build/classes @build/sources.txt 2>/dev/null
 
 echo "=== [4/6] d8 ==="
-"$BT/d8.bat" --release --lib "$AJ" --output build/dex $(find build/classes -name '*.class')
+# 先把 class 打成一个 jar 再交给 d8。逐个文件当参数传，class 一多就会撞上
+# Windows 的命令行长度上限（约 8k 字符），报出来的是一句「命令行太长」，
+# 看上去像构建脚本的问题，其实是命令行装不下了。
+python - <<'PY'
+import os, zipfile
+z = zipfile.ZipFile('build/classes.jar', 'w', zipfile.ZIP_DEFLATED)
+for root, _, files in os.walk('build/classes'):
+    for f in files:
+        if f.endswith('.class'):
+            p = os.path.join(root, f)
+            z.write(p, os.path.relpath(p, 'build/classes'))
+z.close()
+print('classes.jar packed')
+PY
+"$BT/d8.bat" --release --lib "$AJ" --output build/dex build/classes.jar
 
 echo "=== [5/6] 打包 ==="
 python - <<'PY'
@@ -63,14 +90,17 @@ if [ ! -f "$KS" ]; then
   echo "" >&2
   [ "${ALLOW_NEW_KEYSTORE:-0}" = "1" ] || exit 1
   echo "  （已确认）生成新密钥 $KS ..."
-  keytool -genkeypair -keystore "$KS" -alias classroom -keyalg RSA -keysize 2048 \
+  "$KEYTOOL" -genkeypair -keystore "$KS" -alias classroom -keyalg RSA -keysize 2048 \
     -validity 10950 -storepass "$KS_PASS" -keypass "$KS_PASS" \
     -dname "CN=Lamireux, OU=Dev, O=Personal, L=CN, ST=CN, C=CN"
 fi
 
 # 打出指纹，发布前随手核对（正常应恒为 32:A8:95:D3:...）
+# 注意中文 locale 下 keytool 写的是「SHA-256」（带连字符），只匹配 SHA256 会一条都搜不到，
+# 检查会变成「执行成功但什么都不打印」的空操作；再就是它输出的中文不是 UTF-8，
+# grep 会当二进制文件只回一句 "Binary file matches"，所以加 -a 按文本处理。
 echo "--- 签名密钥指纹 ---"
-keytool -list -keystore "$KS" -storepass "$KS_PASS" | grep -i 'SHA256' || true
+"$KEYTOOL" -list -keystore "$KS" -storepass "$KS_PASS" | grep -a -i 'SHA-256\|SHA256' || true
 echo "--------------------"
 
 "$BT/apksigner.bat" sign --ks "$KS" --ks-key-alias classroom \

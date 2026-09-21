@@ -232,9 +232,13 @@ App 里的对应行为：
 核对命令：
 
 ```bash
-keytool -list -keystore keystore.jks -storepass classroom-v2 | grep SHA256
+keytool -list -keystore keystore.jks -storepass classroom-v2 | grep -a -i 'SHA-256\|SHA256'
 apksigner verify --print-certs build/课堂笔记-v*.apk | grep 'SHA-256 digest'
 ```
+
+> 中文环境下 keytool 打印的是「证书指纹 (SHA-256)」——带连字符。只 grep `SHA256`
+> 会一条都搜不到，检查看起来「跑过了」但其实什么都没核对。输出里的中文也不是
+> UTF-8，`-a` 让 grep 按文本处理，否则只会回一句 "Binary file matches"。
 
 > ⚠️ **密钥必须长期存档（云盘 + 本地各一份）。**
 > Android 只允许「签名一致」的 APK 覆盖升级；一旦密钥丢失，此后所有版本都变成
