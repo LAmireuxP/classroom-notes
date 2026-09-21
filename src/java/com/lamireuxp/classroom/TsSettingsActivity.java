@@ -35,9 +35,18 @@ public class TsSettingsActivity extends BaseSettingsActivity {
         }
 
         body.addView(sectionTitle("转写方式"));
-        body.addView(modeRow("关闭", "只用系统语音识别，不保留录音", "off"));
-        body.addView(modeRow("服务端转写", "把录音上传到自建服务转写", "server"));
-        body.addView(modeRow("API 直连", "把录音上传到 API 服务转写", "api"));
+        body.addView(optionRow("关闭", "只用系统语音识别，不保留录音", "off".equals(mode),
+                new Runnable() {
+                    @Override public void run() { pickMode("off"); }
+                }));
+        body.addView(optionRow("服务端转写", "把录音上传到自建服务转写", "server".equals(mode),
+                new Runnable() {
+                    @Override public void run() { pickMode("server"); }
+                }));
+        body.addView(optionRow("API 直连", "把录音上传到 API 服务转写", "api".equals(mode),
+                new Runnable() {
+                    @Override public void run() { pickMode("api"); }
+                }));
 
         if ("off".equals(mode)) {
             body.addView(sectionTitle("说明"));
@@ -46,12 +55,19 @@ public class TsSettingsActivity extends BaseSettingsActivity {
                     Ui.T_LABEL, Ui.onSurfaceVariant(this), false));
         } else {
             body.addView(sectionTitle("服务"));
-            endpointField = labeledField("服务地址", "https://api.openai.com/v1",
+            endpointField = labeledField("服务地址", "https://api.siliconflow.cn/v1",
                     Prefs.tsEndpoint(this));
             keyField = labeledField("API Key", "（可选）", Prefs.tsKey(this));
-            modelField = labeledField("模型名", "whisper-1", Prefs.tsModel(this));
+            modelField = labeledField("模型名", "whisper-1 / FunAudioLLM/SenseVoiceSmall",
+                    Prefs.tsModel(this));
             body.addView(sectionTitle("连接"));
             body.addView(connectionTester(endpointField, keyField));
+            body.addView(Ui.text(this,
+                    "地址填 API 根地址（不是完整接口路径）。转写走 OpenAI 兼容的 "
+                            + "/audio/transcriptions：自建 FunASR / whisper.cpp、硅基流动的 "
+                            + "SenseVoice 都能用；需要签名的原生 ASR（讯飞、通义）和只代理对话的"
+                            + "中转站不提供这个接口。「测试连接」用 GET /models 探活，不消耗额度。",
+                    Ui.T_LABEL, Ui.onSurfaceVariant(this), false));
             body.addView(syncRow());
         }
 
@@ -105,41 +121,19 @@ public class TsSettingsActivity extends BaseSettingsActivity {
         return row;
     }
 
-    /** 切换方式会改变下面显示的字段，所以要点完重建一次 body。 */
-    private View modeRow(String label, String desc, final String value) {
-        final boolean active = value.equals(mode);
-
-        LinearLayout row = Ui.row(this);
-        row.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 12));
-        row.setBackground(Ui.ripple(this, Color.TRANSPARENT, Ui.R_S));
-        row.setClickable(true);
-        row.setFocusable(true);
-        row.setMinimumHeight(Ui.dp(this, 52));
-        Ui.pressScale(row);
-
-        LinearLayout mid = Ui.column(this);
-        mid.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        mid.addView(Ui.text(this, label, Ui.T_BODY + 1,
-                active ? Ui.primary(this) : Ui.onSurface(this), active));
-        mid.addView(Ui.text(this, desc, Ui.T_LABEL, Ui.onSurfaceVariant(this), false));
-        row.addView(mid);
-
-        if (active) row.addView(Icons.icon(this, R.drawable.ic_check, Ui.primary(this), 18));
-
-        row.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                if (value.equals(mode)) return;
-                // 只改内存里的选择并重建，不落盘——落盘统一由「保存」做。
-                //
-                // 一开始我在这里直接写偏好，结果是：在「关闭」下点「API 直连」时，
-                // 服务地址那几个字段还没渲染出来（endpointField 是 null），
-                // 于是存下 mode=api + endpoint="" 这种自相矛盾的组合，
-                // 云转写必然失败。改成只在保存时写，就不会有半保存的状态。
-                mode = value;
-                applyTheme();   // 重建 body，让下面的字段跟着显示/隐藏
-            }
-        });
-        return row;
+    /**
+     * 切换方式会改变下面显示的字段，所以要点完重建一次 body。
+     *
+     * 只改内存里的选择并重建，不落盘——落盘统一由「保存」做。
+     * 一开始我在这里直接写偏好，结果是：在「关闭」下点「API 直连」时，
+     * 服务地址那几个字段还没渲染出来（endpointField 是 null），
+     * 于是存下 mode=api + endpoint="" 这种自相矛盾的组合，云转写必然失败。
+     * 改成只在保存时写，就不会有半保存的状态。
+     */
+    private void pickMode(String value) {
+        if (value.equals(mode)) return;
+        mode = value;
+        applyTheme();
     }
 
     /** 换主题或切方式会重建 body，输入到一半的内容不能丢。 */
@@ -175,7 +169,8 @@ public class TsSettingsActivity extends BaseSettingsActivity {
         mid.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         mid.addView(Ui.text(this, "同步给「AI 总结」设置", Ui.T_BODY + 1,
                 syncAi ? Ui.primary(this) : Ui.onSurface(this), syncAi));
-        mid.addView(Ui.text(this, "保存时抄地址和 Key 给 AI 总结（模型名不动）",
+        mid.addView(Ui.text(this, "保存时抄地址和 Key 给 AI 总结（模型名不动）；AI 总结选了"
+                        + "通义原生 / 文心协议时地址不是同一套，不抄",
                 Ui.T_LABEL, Ui.onSurfaceVariant(this), false));
         row.addView(mid);
         // 对勾固定 18dp 宽放在行尾，配合 mid 的 weight=1 把文字挤压换行，

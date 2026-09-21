@@ -1123,18 +1123,17 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
             Tip.error(this, "笔记内容为空");
             return;
         }
-        if (Prefs.aiKey(this).length() == 0) {
-            Tip.error(this, "请先在「设置 → AI 总结」配置 API Key");
+        final AiProto.Cfg cfg = Prefs.aiCfg(this);
+        String miss = AiProto.missing(cfg);
+        if (miss != null) {
+            Tip.error(this, miss + "（设置 → AI 总结）");
             return;
         }
         showLoading("正在请求 AI 总结…");
-        final String endpoint = Prefs.aiEndpoint(this);
-        final String key = Prefs.aiKey(this);
-        final String model = Prefs.aiModel(this);
         new Thread(new Runnable() {
             @Override public void run() {
                 try {
-                    final Net.AiResult r = Net.summarize(endpoint, key, model, n.title, n.content);
+                    final Net.AiResult r = Net.summarize(cfg, n.title, n.content);
                     runOnUiThread(new Runnable() {
                         @Override public void run() {
                             hideLoading();

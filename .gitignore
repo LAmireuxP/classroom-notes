@@ -3,3 +3,5 @@ keystore.jks
 /*.apk
 app-v2/*.apk
 *.idsig
+# 放 API Key 的便签文件：这个仓库是公开的，绝不能提交进去
+api.txt

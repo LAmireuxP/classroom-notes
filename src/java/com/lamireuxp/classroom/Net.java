@@ -23,41 +23,31 @@ public final class Net {
     }
 
     /**
-     * 调用 OpenAI 兼容的 /chat/completions 做课堂笔记整理。
-     * 做了严格容错：模型多说话/少括号都能尽量解析出来。
+     * 让模型整理课堂笔记。请求怎么发、回复怎么取都交给 {@link AiProto}——
+     * OpenAI 兼容只是其中一种，通义原生、百度文心的结构完全不同。
+     * 解析依旧严格容错：模型多说话/少括号都要尽量抠出来。
      */
-    public static AiResult summarize(String endpoint, String key, String model,
-                                     String title, String text) throws Exception {
+    public static AiResult summarize(AiProto.Cfg cfg, String title, String text) throws Exception {
         String prompt =
                 "你是一个课堂笔记整理助手。请先纠正语音转录文字（修正同音字、补充标点、理顺逻辑），使语句通顺，然后提炼核心内容：\n" +
                 "1.去除重复废话\n2.保留核心知识点\n3.组织成简洁语言\n4.提取3-5个重点\n\n" +
                 "标题：" + (title == null ? "" : title) + "\n内容：\n" + text +
                 "\n\n只输出 JSON，不要任何额外说明：\n{\"summary\":\"提炼后的笔记\",\"keyPoints\":[\"重点1\",\"重点2\",\"重点3\"]}";
 
-        JSONObject body = new JSONObject();
-        body.put("model", model);
-        body.put("temperature", 0.3);
-        body.put("max_tokens", 2048);
-        JSONArray msgs = new JSONArray();
-        JSONObject sys = new JSONObject();
-        sys.put("role", "system");
-        sys.put("content", "你是课堂笔记助手，擅长提炼重点。只输出 JSON。");
-        msgs.put(sys);
-        JSONObject usr = new JSONObject();
-        usr.put("role", "user");
-        usr.put("content", prompt);
-        msgs.put(usr);
-        body.put("messages", msgs);
+        String system = "你是课堂笔记助手，擅长提炼重点。只输出 JSON。";
+        String body = AiProto.body(cfg, system, prompt, false);
 
-        String resp = postJson(endpoint + "/chat/completions", key, body.toString());
-        JSONObject data = new JSONObject(resp);
-        JSONObject choice = data.optJSONArray("choices") != null && data.optJSONArray("choices").length() > 0
-                ? data.optJSONArray("choices").getJSONObject(0) : null;
-        String content = "";
-        if (choice != null && choice.optJSONObject("message") != null) {
-            content = choice.optJSONObject("message").optString("content", "");
-        }
-        if (content.trim().length() == 0) throw new Exception("模型返回内容为空");
+        // 文心的老接口：先拿 client_id + client_secret 换 access_token，token 挂在 URL 上
+        String token = AiProto.ERNIE.equals(cfg.id) ? baiduToken(cfg) : null;
+        String resp = postJson(AiProto.url(cfg, token), AiProto.bearer(cfg), body);
+
+        JSONObject data = toJson(resp);
+        // 出错也可能是 HTTP 200（百度就这么干），所以响应体本身要查一遍
+        String bodyErr = AiProto.bodyError(data);
+        if (bodyErr != null) throw new Exception(bodyErr);
+
+        String content = AiProto.extract(cfg, data);
+        if (content.trim().length() == 0) throw new Exception(noContent(data));
 
         String clean = stripFence(content);
         AiResult r = new AiResult();
@@ -72,6 +62,67 @@ public final class Net {
             if (r.keyPoints == null || r.keyPoints.isEmpty()) r.keyPoints = Extract.keyPoints(clean);
         }
         return r;
+    }
+
+    /**
+     * 「响应里没有正文」的原因通常很具体：把实时音频模型、向量模型之类的当对话模型填了，
+     * 请求会被正常受理，但回复里只有状态字段。这时说清是模型选错，别让人对着
+     * 「模型返回内容为空」猜。
+     */
+    private static String noContent(JSONObject data) {
+        if (data.optString("status_message", "").length() > 0
+                || data.optString("status_name", "").length() > 0) {
+            return "服务只返回了状态、没有正文：这个模型可能不支持纯文本对话"
+                    + "（实时音频 / 语音类模型常见），换一个文本模型试试";
+        }
+        return "模型返回内容为空";
+    }
+
+    /**
+     * 百度文心的 access_token。有效期 30 天，进程内缓存一份——
+     * 每总结一次就换一次 token 既慢又多一次失败点。
+     */
+    private static String tokenCache = "";
+    private static long tokenExpire = 0L;
+
+    private static String baiduToken(AiProto.Cfg cfg) throws Exception {
+        long now = System.currentTimeMillis();
+        if (tokenCache.length() > 0 && now < tokenExpire) return tokenCache;
+        String resp = get(AiProto.oauthUrl(cfg));
+        JSONObject o;
+        try {
+            o = new JSONObject(resp);
+        } catch (Exception e) {
+            throw new Exception("换取 access_token 失败：返回的不是 JSON");
+        }
+        String err = o.optString("error", "");
+        if (err.length() > 0) {
+            String d = o.optString("error_description", "");
+            throw new Exception("换取 access_token 失败：" + (d.length() > 0 ? d : err)
+                    + "（检查 API Key / Secret Key 是否填反）");
+        }
+        String t = o.optString("access_token", "");
+        if (t.length() == 0) throw new Exception("换取 access_token 失败：返回里没有 token");
+        tokenCache = t;
+        long ttl = o.optLong("expires_in", 2592000L);
+        // 提前 5 分钟过期，避免边界上刚好用到废 token
+        tokenExpire = now + (ttl - 300L) * 1000L;
+        return t;
+    }
+
+    /** 响应可能根本不是 JSON（网关的 HTML 错误页、门户拦截），这时报错要说人话。 */
+    private static JSONObject toJson(String resp) throws Exception {
+        try {
+            return new JSONObject(resp);
+        } catch (Exception e) {
+            throw new Exception("服务返回的不是 JSON（可能被网关或门户页拦截了）："
+                    + shortOf(resp));
+        }
+    }
+
+    private static String shortOf(String s) {
+        String t = s == null ? "" : s.trim().replaceAll("\\s+", " ");
+        return t.length() > 80 ? t.substring(0, 80) + "…" : t;
     }
 
     private static String toLines(JSONArray arr) {
@@ -139,7 +190,8 @@ public final class Net {
     public static String transcribe(String endpoint, String key, String model,
                                     byte[] audio, String fileName) throws Exception {
         String boundary = "----classroom" + System.currentTimeMillis();
-        HttpURLConnection conn = (HttpURLConnection) new URL(endpoint + "/audio/transcriptions").openConnection();
+        HttpURLConnection conn = (HttpURLConnection)
+                new URL(AiProto.base(endpoint) + "/audio/transcriptions").openConnection();
         try {
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(20000);
@@ -170,7 +222,8 @@ public final class Net {
             int code = conn.getResponseCode();
             String resp = readAll(code >= 400 ? conn.getErrorStream() : conn.getInputStream());
             if (code >= 400) throw new Exception(friendlyError(code, resp)
-                    + (code == 404 ? "；转写走 /audio/transcriptions，纯对话 API（如 DeepSeek）不提供这个接口" : ""));
+                    + (code == 404 ? "；转写要的是 OpenAI 兼容的 /audio/transcriptions 接口，"
+                    + "纯对话服务（DeepSeek 等）和只代理对话的中转站都不提供它" : ""));
             JSONObject o = new JSONObject(resp);
             String text = o.optString("text", "").trim();
             if (text.length() == 0) throw new Exception("服务返回内容为空");
@@ -181,39 +234,80 @@ public final class Net {
     }
 
     /**
-     * 连通性自检：GET {base}/models。OpenAI 兼容服务基本都实现这个接口，
-     * 点一下当场就知道「地址 + Key」通不通——录完 40 分钟才发现 404 的代价太大。
+     * 连通性自检，按协议来。点一下当场就知道「地址 + Key + 模型」通不通——
+     * 录完 40 分钟才发现配错，代价太大。
+     *
+     * OpenAI 兼容的服务先用 GET /models 探（不花钱）；通义原生、文心、以及自定义了
+     * 请求路径的服务没有这个接口，就发一条最小的对话请求（几个 token），
+     * 换来「所有协议都能自检」。
      *
      * @return 一行可直接展示的成功文案
-     * @throws Exception 失败原因已翻译成中文（配合 humanize 在 UI 层处理）
+     * @throws Exception 失败原因已翻译成中文
      */
-    public static String probe(String endpoint, String key) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(endpoint + "/models").openConnection();
+    public static String probe(AiProto.Cfg cfg) throws Exception {
+        boolean maybeModels = AiProto.OPENAI.equals(cfg.id)
+                || (AiProto.CUSTOM.equals(cfg.id) && cfg.path.trim().length() == 0);
+        if (maybeModels) {
+            String r = probeModels(cfg);
+            if (r != null) return r;   // null = 这个服务没有 /models，落到最小请求
+        }
+        return probeChat(cfg);
+    }
+
+    /** GET {地址}/models。返回 null 表示服务没实现这个接口——那不是失败，换条路试。 */
+    private static String probeModels(AiProto.Cfg cfg) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection)
+                new URL(AiProto.base(cfg.endpoint) + "/models").openConnection();
         try {
             conn.setRequestMethod("GET");
             conn.setConnectTimeout(10000);
             conn.setReadTimeout(15000);
-            if (key != null && key.length() > 0) {
-                conn.setRequestProperty("Authorization", "Bearer " + key);
+            if (cfg.key.trim().length() > 0) {
+                conn.setRequestProperty("Authorization", "Bearer " + cfg.key.trim());
             }
             int code = conn.getResponseCode();
             String resp = readAll(code >= 400 ? conn.getErrorStream() : conn.getInputStream());
+            if (code == 404 || code == 405 || code == 400) return null;
             if (code >= 400) {
-                if (code == 401 && (key == null || key.length() == 0)) {
+                if (code == 401 && cfg.key.trim().length() == 0) {
                     // 没填 Key 的 401 是好消息：地址和网络都通了，就差 Key
                     throw new Exception("地址可达、服务在线，但该服务要求填写 API Key");
                 }
-                String msg = friendlyError(code, resp);
-                if (code == 404) {
-                    msg += "；确认地址填的是 API 根（如 https://api.openai.com/v1），不是完整接口路径";
-                }
-                throw new Exception(msg);
+                throw new Exception(friendlyError(code, resp));
             }
             try {
                 JSONArray data = new JSONObject(resp).optJSONArray("data");
                 if (data != null) return "服务在线，可用模型 " + data.length() + " 个";
             } catch (Exception ignored) {}
             return "服务在线";
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    /** 发一条最小的对话请求做探活。文心连 access_token 一起验了。 */
+    private static String probeChat(AiProto.Cfg cfg) throws Exception {
+        String body = AiProto.body(cfg, "你只需要回复两个字", "ping", true);
+        String token = AiProto.ERNIE.equals(cfg.id) ? baiduToken(cfg) : null;
+        String resp = postJson(AiProto.url(cfg, token), AiProto.bearer(cfg), body);
+        JSONObject data = toJson(resp);
+        String err = AiProto.bodyError(data);
+        if (err != null) throw new Exception(err);
+        if (AiProto.extract(cfg, data).length() == 0) throw new Exception(noContent(data));
+        return "服务在线，模型有回应";
+    }
+
+    /** 换 token 这类简单 GET。 */
+    public static String get(String url) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        try {
+            conn.setRequestMethod("GET");
+            conn.setConnectTimeout(20000);
+            conn.setReadTimeout(30000);
+            int code = conn.getResponseCode();
+            String resp = readAll(code >= 400 ? conn.getErrorStream() : conn.getInputStream());
+            if (code >= 400) throw new Exception(friendlyError(code, resp));
+            return resp;
         } finally {
             conn.disconnect();
         }
@@ -244,18 +338,43 @@ public final class Net {
     }
 
     private static String friendlyError(int code, String body) {
-        String detail = "";
+        String detail = detailOf(body);
+        if (code == 401) return "API Key 无效或未授权" + detail;
+        if (code == 403) return "没有权限（HTTP 403）" + detail;
+        if (code == 404) return "接口地址不正确（HTTP 404）" + detail;
+        if (code == 429) return "请求过于频繁或被限流" + detail;
+        if (code >= 500) return "服务端错误 HTTP " + code + detail;
+        return "请求失败 HTTP " + code + detail;
+    }
+
+    /**
+     * 把错误详情抠出来。各家的错误体长得不一样：OpenAI 是 error.message，
+     * 百度是 error_code + error_msg，通义 / 智谱 / 多数网关是 code + message。
+     * 都认一遍，别让用户拿到一个只有状态码的空错误。
+     */
+    private static String detailOf(String body) {
+        if (body == null || body.trim().length() == 0) return "";
         try {
             JSONObject o = new JSONObject(body);
             JSONObject err = o.optJSONObject("error");
-            if (err != null && err.optString("message", "").length() > 0) {
-                detail = "：" + err.optString("message");
+            if (err != null) {
+                String m = err.optString("message", "");
+                if (m.length() == 0) m = err.optString("msg", "");
+                if (m.length() > 0) return "：" + m;
+            } else if (o.opt("error") instanceof String) {
+                String s = (String) o.opt("error");
+                if (s.length() > 0) return "：" + s;
             }
+            String em = o.optString("error_msg", "");
+            if (em.length() > 0) {
+                int ec = o.optInt("error_code", 0);
+                return "：" + em + (ec != 0 ? "（错误码 " + ec + "）" : "");
+            }
+            String m = o.optString("message", "");
+            if (m.length() == 0) m = o.optString("msg", "");
+            if (m.length() > 0) return "：" + m;
         } catch (Exception ignored) {}
-        if (code == 401) return "API Key 无效或未授权" + detail;
-        if (code == 404) return "接口地址不正确（HTTP 404）" + detail;
-        if (code == 429) return "请求过于频繁或被限流" + detail;
-        return "请求失败 HTTP " + code + detail;
+        return "：" + shortOf(body);
     }
 
     private static String readAll(InputStream in) throws Exception {

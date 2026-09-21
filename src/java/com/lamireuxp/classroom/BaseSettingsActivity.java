@@ -2,6 +2,7 @@ package com.lamireuxp.classroom;
 
 import android.app.Activity;
 import android.content.res.Configuration;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.view.View;
 import android.view.ViewGroup;
@@ -156,13 +157,77 @@ public abstract class BaseSettingsActivity extends Activity {
     }
 
     /**
-     * 「测试连接」按钮：向 {服务地址}/models 发一个 GET。OpenAI 兼容服务基本都实现这个接口，
-     * 当场就能知道地址和 Key 通不通，而不是录完一节课才发现 404。
+     * 一个可点选的选项行（单选列表）。选中的那行高亮并带对勾。
+     *
+     * 抽出来是因为「转写方式」「接口协议」「鉴权方式」都是同一件事：
+     * 原来要用户在输入框里敲 off / server / api，还得写校验去挡拼错；
+     * 改成点选就没有拼错的可能了。
+     */
+    protected View optionRow(String label, String desc, boolean active, final Runnable onClick) {
+        LinearLayout row = Ui.row(this);
+        row.setPadding(Ui.dp(this, 16), Ui.dp(this, 12), Ui.dp(this, 16), Ui.dp(this, 12));
+        row.setBackground(Ui.ripple(this, Color.TRANSPARENT, Ui.R_S));
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setMinimumHeight(Ui.dp(this, 52));
+        Ui.pressScale(row);
+
+        LinearLayout mid = Ui.column(this);
+        mid.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        mid.addView(Ui.text(this, label, Ui.T_BODY + 1,
+                active ? Ui.primary(this) : Ui.onSurface(this), active));
+        if (desc != null && desc.length() > 0) {
+            mid.addView(Ui.text(this, desc, Ui.T_LABEL, Ui.onSurfaceVariant(this), false));
+        }
+        row.addView(mid);
+
+        // 对勾固定 18dp 宽放在行尾，配合 mid 的 weight=1 把文字挤压换行，
+        // 不会出现两行说明盖到图标下面
+        if (active) {
+            android.widget.ImageView check =
+                    Icons.icon(this, R.drawable.ic_check, Ui.primary(this), 18);
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
+                    Ui.dp(this, 18), Ui.dp(this, 18));
+            clp.leftMargin = Ui.dp(this, 12);
+            clp.gravity = android.view.Gravity.CENTER_VERTICAL;
+            check.setLayoutParams(clp);
+            row.addView(check);
+        }
+
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { onClick.run(); }
+        });
+        return row;
+    }
+
+    /** 给「测试连接」提供完整配置：各协议的地址、鉴权、请求体都不一样。 */
+    public interface CfgProvider {
+        AiProto.Cfg cfg();
+    }
+
+    /** 简版：从两个输入框凑一个 OpenAI 兼容配置（语音转写只有这一种协议）。 */
+    protected View connectionTester(final EditText endpointField, final EditText keyField) {
+        return connectionTester(new CfgProvider() {
+            @Override public AiProto.Cfg cfg() {
+                AiProto.Cfg g = new AiProto.Cfg();
+                g.endpoint = endpointField.getText().toString().trim();
+                g.key = keyField.getText().toString().trim();
+                return g;
+            }
+        });
+    }
+
+    /**
+     * 「测试连接」按钮：当场验证地址 / Key / 模型通不通，而不是录完一节课才发现 404。
+     *
+     * 探活方式按协议自动选（OpenAI 兼容走 GET /models 不花钱，其它协议发一条最小的对话
+     * 请求），但按钮文案不再写明是哪一种——它是重建时才算的，用户改了「自定义路径」之类的
+     * 输入框之后不会跟着变，会挂着一个过期的说法。方式写在按钮下方的说明里，那里永远是准的。
      *
      * 结果写在按钮文案上而不是只弹 Tip——Tip 两秒多就没了，验证结果值得留在屏上让人看仔细。
      */
-    protected View connectionTester(final EditText endpointField, final EditText keyField) {
-        final TextView btn = Ui.textButton(this, "测试连接（GET /models）");
+    protected View connectionTester(final CfgProvider provider) {
+        final TextView btn = Ui.textButton(this, "测试连接");
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.topMargin = Ui.dp(this, 6);
@@ -171,14 +236,25 @@ public abstract class BaseSettingsActivity extends Activity {
         btn.setGravity(android.view.Gravity.CENTER);
         btn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                String base = endpointField.getText().toString().trim();
-                while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
-                if (base.length() == 0) {
+                final AiProto.Cfg cfg = provider.cfg();
+                boolean modelsProbe = usesModelsProbe(cfg);
+                if (cfg.endpoint.trim().length() == 0) {
                     Tip.error(BaseSettingsActivity.this, "先填写服务地址");
                     return;
                 }
-                final String url = base;
-                final String key = keyField.getText().toString().trim();
+                if (AiProto.ERNIE.equals(cfg.id)) {
+                    if (cfg.key.trim().length() == 0 || cfg.secret.trim().length() == 0) {
+                        Tip.error(BaseSettingsActivity.this, "文心要填 API Key 和 Secret Key 两个");
+                        return;
+                    }
+                } else if (cfg.key.trim().length() == 0 && !"none".equals(cfg.auth)) {
+                    Tip.error(BaseSettingsActivity.this, "先填写 API Key");
+                    return;
+                }
+                if (!modelsProbe && cfg.model.trim().length() == 0) {
+                    Tip.error(BaseSettingsActivity.this, "先填写模型名");
+                    return;
+                }
                 btn.setEnabled(false);
                 btn.setText("测试中…");
                 new Thread(new Runnable() {
@@ -186,7 +262,7 @@ public abstract class BaseSettingsActivity extends Activity {
                         String ok = null;
                         String err = null;
                         try {
-                            ok = Net.probe(url, key);
+                            ok = Net.probe(cfg);
                         } catch (Throwable e) {
                             err = Net.humanize(e);
                         }
@@ -209,5 +285,11 @@ public abstract class BaseSettingsActivity extends Activity {
             }
         });
         return btn;
+    }
+
+    /** 这次测活会不会走 GET /models。自定义了请求路径的服务不一定有这个接口。 */
+    static boolean usesModelsProbe(AiProto.Cfg c) {
+        return AiProto.OPENAI.equals(c.id)
+                || (AiProto.CUSTOM.equals(c.id) && c.path.trim().length() == 0);
     }
 }

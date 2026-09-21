@@ -34,7 +34,7 @@ public class SettingsActivity extends BaseSettingsActivity {
 
         // ---- 服务 ----
         body.addView(sectionTitle("服务"));
-        body.addView(navRow(R.drawable.ic_ai, "AI 总结设置", "接口地址、Key、模型",
+        body.addView(navRow(R.drawable.ic_ai, "AI 总结设置", "接口协议、地址、Key、模型",
                 AiSettingsActivity.class));
         body.addView(navRow(R.drawable.ic_mic, "语音转写设置", "转写方式与云端服务",
                 TsSettingsActivity.class));

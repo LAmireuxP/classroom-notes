@@ -50,17 +50,52 @@ public class Prefs {
     public static boolean dark(Context c) { return isDark(c); }
 
     // ---------- AI（课堂总结） ----------
-    public static String aiEndpoint(Context c) {
+    // 默认仍是 DeepSeek（新装即用），但协议是可换的：OpenAI 兼容只是其中一种，
+    // 通义原生、百度文心的结构完全不同，见 AiProto。
+    // 这些取值都只经 aiCfg / saveAi 进出，不单独对外。
+    private static String aiProtocol(Context c) {
+        return sp(c).getString("ai_protocol", AiProto.OPENAI);
+    }
+    private static String aiEndpoint(Context c) {
         return sp(c).getString("ai_endpoint", "https://api.deepseek.com/v1");
     }
-    public static String aiKey(Context c) { return sp(c).getString("ai_key", ""); }
-    public static String aiModel(Context c) { return sp(c).getString("ai_model", "deepseek-chat"); }
+    private static String aiKey(Context c) { return sp(c).getString("ai_key", ""); }
+    /** 文心协议的 client_secret。 */
+    private static String aiSecret(Context c) { return sp(c).getString("ai_secret", ""); }
+    private static String aiModel(Context c) { return sp(c).getString("ai_model", "deepseek-chat"); }
+    /** 自定义协议：请求路径。 */
+    private static String aiPath(Context c) { return sp(c).getString("ai_path", ""); }
+    /** 自定义协议：响应取值字段路径，如 output.text。 */
+    private static String aiField(Context c) { return sp(c).getString("ai_field", ""); }
+    /** 自定义协议：bearer | query | none。 */
+    private static String aiAuth(Context c) { return sp(c).getString("ai_auth", "bearer"); }
 
-    public static void saveAi(Context c, String endpoint, String key, String model) {
+    /** 一次取齐，交给 Net / AiProto 用。 */
+    public static AiProto.Cfg aiCfg(Context c) {
+        AiProto.Cfg g = new AiProto.Cfg();
+        g.id = aiProtocol(c);
+        g.endpoint = aiEndpoint(c);
+        g.key = aiKey(c);
+        g.secret = aiSecret(c);
+        g.model = aiModel(c);
+        g.path = aiPath(c);
+        g.field = aiField(c);
+        g.auth = aiAuth(c);
+        return g;
+    }
+
+    public static void saveAi(Context c, AiProto.Cfg g) {
         sp(c).edit()
-                .putString("ai_endpoint", trimSlash(endpoint))
-                .putString("ai_key", key.trim())
-                .putString("ai_model", model.trim().length() == 0 ? "deepseek-chat" : model.trim())
+                .putString("ai_protocol", g.id)
+                .putString("ai_endpoint", trimSlash(g.endpoint))
+                .putString("ai_key", g.key.trim())
+                .putString("ai_secret", g.secret.trim())
+                // 空模型名就存空：豆包那种要填「接入点 ID」的，硬塞一个默认值
+                // 只会让人拿到一个看不懂的报错。空值由 AiProto.missing 在总结前拦下。
+                .putString("ai_model", g.model.trim())
+                .putString("ai_path", g.path.trim())
+                .putString("ai_field", g.field.trim())
+                .putString("ai_auth", g.auth)
                 .apply();
     }
 
@@ -89,10 +124,25 @@ public class Prefs {
         sp(c).edit().putBoolean("ts_sync_ai", on).apply();
     }
 
+    /**
+     * 转写和 AI 总结能不能共用一套地址：只有 AI 那边也是「{地址}/chat/completions」
+     * 这种 OpenAI 形状时才行。通义原生、文心的地址跟转写完全不是一回事，
+     * 同步过去只会把配好的 AI 设置冲坏。只给 syncAiFromTs 用。
+     */
+    private static boolean aiSharesTsEndpoint(Context c) {
+        String p = aiProtocol(c);
+        return AiProto.OPENAI.equals(p)
+                || (AiProto.CUSTOM.equals(p) && aiPath(c).trim().length() == 0);
+    }
+
     /** 地址照抄；Key 为空时保留 AI 总结里已有的——自建服务常不用 Key，别把配好的冲掉。 */
     public static void syncAiFromTs(Context c, String endpoint, String key) {
+        if (!aiSharesTsEndpoint(c)) return;
+        AiProto.Cfg g = aiCfg(c);
+        g.endpoint = endpoint;
         String k = key == null ? "" : key.trim();
-        saveAi(c, endpoint, k.length() == 0 ? aiKey(c) : k, aiModel(c));
+        if (k.length() > 0) g.key = k;
+        saveAi(c, g);
     }
 
     private static String trimSlash(String s) {
