@@ -35,6 +35,7 @@ public abstract class BaseSettingsActivity extends Activity {
     protected abstract void fillBody(LinearLayout body);
 
     @Override
+    /** 先定主题再 super.onCreate（状态栏与对话框的配色在这一刻定下），然后建骨架。 */
     protected void onCreate(Bundle b) {
         // 必须在 super.onCreate 之前：应用主题资源
         setTheme(Prefs.isDark(this) ? R.style.AppTheme_Dark : R.style.AppTheme);
@@ -43,6 +44,7 @@ public abstract class BaseSettingsActivity extends Activity {
     }
 
     @Override
+    /** 从别处回来时检查深浅色是否变过（主题可以在别的页面被改），变了就就地重绘。 */
     protected void onResume() {
         super.onResume();
         // 主题可能在别处被改过，回来时要重新着色
@@ -50,6 +52,7 @@ public abstract class BaseSettingsActivity extends Activity {
     }
 
     @Override
+    /** 系统深浅色变化：跟随系统模式下自己重绘（manifest 声明了 uiMode，系统不会重建）。 */
     public void onConfigurationChanged(Configuration nc) {
         super.onConfigurationChanged(nc);
         // uiMode 在 manifest 的 configChanges 里声明过，系统切深浅色时不会自动重建
@@ -63,6 +66,11 @@ public abstract class BaseSettingsActivity extends Activity {
         buildUi();
     }
 
+    /**
+     * 搭页面骨架：顶栏 + 可滚动内容区（body）。
+     * 子类只往 body 里填东西（fillBody），滚动、内边距、设置内容色这些都在这里统一处理。
+     * 换主题会走 applyTheme → buildUi，所以 fillBody 必须能「从 Prefs 完整重建」。
+     */
     private void buildUi() {
         pageRoot = Ui.column(this);
         pageRoot.setBackgroundColor(Ui.surface(this));
@@ -85,6 +93,7 @@ public abstract class BaseSettingsActivity extends Activity {
         fillBody(body);
     }
 
+    /** 顶栏：返回按钮 + 页面标题。状态栏内边距由 Ui.padStatusBar 按实际 insets 决定。 */
     private View topBar() {
         LinearLayout bar = Ui.row(this);
         bar.setBackgroundColor(Ui.surface(this));

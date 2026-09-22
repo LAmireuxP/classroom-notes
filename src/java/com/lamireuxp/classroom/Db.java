@@ -21,16 +21,24 @@ public class Db extends SQLiteOpenHelper {
 
     private static Db sInstance;
 
+    /**
+     * 进程内单例。SQLiteOpenHelper 本身是线程安全的，这里 synchronized 只是防止
+     * 两个线程同时初始化出两个实例（后台线程读数据 + 主线程渲染是常态）。
+     */
     public static synchronized Db get(Context c) {
         if (sInstance == null) sInstance = new Db(c.getApplicationContext());
         return sInstance;
     }
 
+    /** 库文件固定在应用私有目录，不导出、不共享（备份走 Backup 的 JSON 通道）。 */
     private Db(Context c) {
         super(c, NAME, null, VERSION);
     }
 
     @Override
+    /** 建表与索引。三张表都是「扁平 + 外键字段」结构，没有真正的外键约束——
+     *  删除课程时由 deleteCourse() 手工级联（见那里的注释：不能靠 ON DELETE CASCADE，
+     *  minSdk 22 上外键需要每次连接都 PRAGMA，反而更脆）。 */
     public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE courses(" +
                 "id TEXT PRIMARY KEY," +
@@ -62,6 +70,10 @@ public class Db extends SQLiteOpenHelper {
     }
 
     @Override
+    /**
+     * 版本迁移。目前停在 v1（表结构没变过），所以这里是空的。
+     * 以后加字段时在这里按 oldV 逐级升级，别用「删表重建」——那会连用户数据一起清掉。
+     */
     public void onUpgrade(SQLiteDatabase db, int oldV, int newV) {
         // v1 起步，暂无迁移
     }
@@ -133,6 +145,7 @@ public class Db extends SQLiteOpenHelper {
         return list;
     }
 
+    /** 按 id 取单门课程；不存在返回 null（调用方要判空）。 */
     public Course course(String id) {
         Cursor c = getReadableDatabase().rawQuery(
                 "SELECT id,name,teacher,color FROM courses WHERE id=?", new String[]{id});
@@ -151,6 +164,7 @@ public class Db extends SQLiteOpenHelper {
         return null;
     }
 
+    /** 课程总数（首页「N 门」用）。 */
     public int courseCount() {
         return count("SELECT COUNT(*) FROM courses");
     }
@@ -171,6 +185,11 @@ public class Db extends SQLiteOpenHelper {
         }
     }
 
+    /**
+     * 删除课程，**连带删掉它的笔记与待办**，全程一个事务。
+     * 手工级联而不是交给外键：SQLite 的外键约束默认关闭，要在每次打开连接时
+     * PRAGMA foreign_keys=ON，漏一次就会留下孤儿数据；这里显式删更可控。
+     */
     public void deleteCourse(String id) {
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
@@ -206,6 +225,7 @@ public class Db extends SQLiteOpenHelper {
         return list;
     }
 
+    /** 按 id 取单条笔记；不存在返回 null。 */
     public Note note(String id) {
         Cursor c = getReadableDatabase().rawQuery(
                 "SELECT id,course_id,title,date,content,keypoints,pinned,created FROM notes WHERE id=?",
@@ -218,6 +238,11 @@ public class Db extends SQLiteOpenHelper {
         return null;
     }
 
+    /**
+     * 读一行笔记，按**列序号**取值，所以顺序必须和查询里那段
+     * `SELECT id,course_id,title,date,content,keypoints,pinned,created` 完全一致。
+     * 以后给 notes 加字段时要三处一起改：建表、SELECT 列表、这里。
+     */
     private Note readNote(Cursor c) {
         Note n = new Note();
         n.id = c.getString(0);
@@ -248,12 +273,14 @@ public class Db extends SQLiteOpenHelper {
         }
     }
 
+    /** 置顶/取消置顶（只改一个字段，不动 updatedAt——置顶不该把「修改时间」刷新掉）。 */
     public void setNotePinned(String id, boolean pinned) {
         ContentValues v = new ContentValues();
         v.put("pinned", pinned ? 1 : 0);
         getWritableDatabase().update("notes", v, "id=?", new String[]{id});
     }
 
+    /** 删除单条笔记。 */
     public void deleteNote(String id) {
         getWritableDatabase().delete("notes", "id=?", new String[]{id});
     }
@@ -273,6 +300,7 @@ public class Db extends SQLiteOpenHelper {
         return list;
     }
 
+    /** 按 id 取单条待办；不存在返回 null。 */
     public Todo todo(String id) {
         Cursor c = getReadableDatabase().rawQuery(
                 "SELECT id,course_id,title,due,priority,completed,created FROM todos WHERE id=?",
@@ -285,6 +313,10 @@ public class Db extends SQLiteOpenHelper {
         return null;
     }
 
+    /**
+     * 读一行待办，同样按列序号取值，顺序与查询里的
+     * `SELECT id,course_id,title,due,priority,completed,created` 对齐（加字段三处一起改）。
+     */
     private Todo readTodo(Cursor c) {
         Todo t = new Todo();
         t.id = c.getString(0);
@@ -312,12 +344,14 @@ public class Db extends SQLiteOpenHelper {
         }
     }
 
+    /** 勾选/取消勾选待办。 */
     public void setTodoCompleted(String id, boolean completed) {
         ContentValues v = new ContentValues();
         v.put("completed", completed ? 1 : 0);
         getWritableDatabase().update("todos", v, "id=?", new String[]{id});
     }
 
+    /** 删除单条待办。 */
     public void deleteTodo(String id) {
         getWritableDatabase().delete("todos", "id=?", new String[]{id});
     }
@@ -392,6 +426,7 @@ public class Db extends SQLiteOpenHelper {
         });
     }
 
+    /** null 安全取字符串：SQLite 里空字段读出来是 null，界面与拼接都按空串处理。 */
     private static String nz(String s) { return s == null ? "" : s; }
 
     // ---------------- 统计 ----------------
@@ -399,6 +434,10 @@ public class Db extends SQLiteOpenHelper {
     /** 优先级的固定顺序，兼 todoByPriority() 的下标含义。 */
     public static final String[] PRIORITY_KEYS = {"high", "medium", "low"};
 
+    /**
+     * 首页统计：[笔记数, 待办总数, 已完成待办数]。
+     * 三条独立 COUNT，不 JOIN——三张表的统计互不相关，JOIN 只会把行数乘起来。
+     */
     public int[] totals() {
         int notes = count("SELECT COUNT(*) FROM notes");
         int todos = count("SELECT COUNT(*) FROM todos");
@@ -447,6 +486,7 @@ public class Db extends SQLiteOpenHelper {
         return 1;
     }
 
+    /** 跑一条 COUNT 查询取第一列。查询语句都是本类内的字面量，不接受外部拼接。 */
     private int count(String sql) {
         Cursor c = getReadableDatabase().rawQuery(sql, null);
         try {
@@ -468,6 +508,7 @@ public class Db extends SQLiteOpenHelper {
         return out;
     }
 
+    /** 重点清单按行拼接（与 splitString 互逆，落库时用）。 */
     public static String joinString(List<String> list) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < list.size(); i++) {

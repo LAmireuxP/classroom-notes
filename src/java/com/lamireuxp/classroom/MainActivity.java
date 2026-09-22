@@ -41,6 +41,10 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
     private boolean renderedDark;
 
     @Override
+    /**
+     * 首页入口：先定主题（必须在 super.onCreate 之前，否则状态栏与对话框会用错配色），
+     * 再打开数据库、建界面。
+     */
     protected void onCreate(Bundle b) {
         // 必须在 super.onCreate 之前：应用主题资源（窗口背景 / 状态栏 / 对话框默认色）。
         // 这里原来漏了，MainActivity 一直吃 manifest 里的浅色主题，
@@ -68,6 +72,13 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         return dlg;
     }
 
+    /**
+     * 关掉所有还开着的底部抽屉。
+     *
+     * 对话框是独立 Window，主题在创建那一刻就固定了，换主题时它不会跟着变——
+     * 不关掉就会出现「界面已经变深色、抽屉还是白的」。顺带把已经自行关闭的
+     * 抽屉从列表里清掉，免得越积越多。
+     */
     private void dismissSheets() {
         for (AlertDialog d : openSheets) {
             if (d.isShowing()) d.dismiss();
@@ -96,6 +107,10 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
     }
 
     @Override
+    /**
+     * 系统深浅色变化时自己重绘（manifest 声明了 uiMode，系统不会替我们重建）。
+     * 只在「跟随系统」模式下重绘；浅色/深色是用户的显式选择，不该被系统设置影响。
+     */
     public void onConfigurationChanged(Configuration nc) {
         super.onConfigurationChanged(nc);
         // manifest 把 uiMode 声明进了 configChanges，系统切深浅色时 Activity
@@ -104,6 +119,10 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
     }
 
     @Override
+    /**
+     * 从别处回来：深浅色变了就整体重新着色（applyTheme 内部会重画内容），
+     * 否则至少刷新一次列表——课程/笔记可能在课程页被改过。
+     */
     protected void onResume() {
         super.onResume();
         // 主题可能在设置页被改过，回来时要重新着色（applyTheme 内部会 refresh）
@@ -115,9 +134,13 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
     }
 
     @Override
+    /** Dialogs.DialogHost 的实现：记住当前表单对话框（返回键与换主题都要用它）。 */
     public void setSubmitDialog(AlertDialog dlg) { this.submitDialog = dlg; }
 
     @Override
+    /**
+     * 返回键：有表单对话框开着就先关它（用户预期是「退出输入」而不是退出页面）。
+     */
     public void onBackPressed() {
         if (submitDialog != null && submitDialog.isShowing()) {
             submitDialog.dismiss();
@@ -171,6 +194,10 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         setContentView(rootFrame);
     }
 
+    /**
+     * 顶栏：应用名 + 主题开关 + 设置入口。
+     * 主题开关放在这里是因为它是最常被点的设置项——为此多点两层进设置页不值得。
+     */
     private View topBar() {
         LinearLayout bar = Ui.row(this);
         bar.setBackgroundColor(Ui.surface(this));
@@ -247,17 +274,24 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
 
     private LinearLayout listBox;
 
+    /** 课程列表容器。搜索框每次输入都只重建这一块，不动上面的统计卡与搜索栏。 */
     private View courseListContainer() {
         listBox = Ui.column(this);
         fillCourseList();
         return listBox;
     }
 
+    /** 搜索框输入时调用：只重建列表部分（连统计卡都不重算）。 */
     private void refreshCourseList() {
         if (listBox == null) return;
         fillCourseList();
     }
 
+    /**
+     * 画课程列表：空状态 / 「我的课程」标题行 + 课程行 + 行间分隔线。
+     * 每次调用都 removeAllViews() 重建——列表规模在「一屏到几十门」之间，
+     * 重建比做增量 diff 简单得多，也不会出现状态残留（搜索词、展开态）。
+     */
     private void fillCourseList() {
         listBox.removeAllViews();
         List<Db.Course> courses = db.courses();
@@ -342,10 +376,12 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         return card;
     }
 
+    /** 统计行里的数字：用 onSurface 加粗，比旁边的标签更抢眼。 */
     private TextView inlineNum(String s) {
         return Ui.text(this, s, Ui.T_BODY, Ui.onSurface(this), true);
     }
 
+    /** 统计行里的标签文字：弱一号的 onSurfaceVariant。 */
     private TextView inlineLabel(String s) {
         return Ui.text(this, s, Ui.T_BODY, Ui.onSurfaceVariant(this), false);
     }
@@ -414,6 +450,10 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         return row;
     }
 
+    /**
+     * 没有课程时的空状态。空状态要「教学」而不只是「暂无」——给一个能立刻做的动作，
+     * 而不是一句冷冰冰的提示。
+     */
     private View emptyState() {
         LinearLayout box = Ui.column(this);
         box.setGravity(Gravity.CENTER);
@@ -469,10 +509,12 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         showSheet(c.name, box);
     }
 
+    /** 抽屉行（默认 onSurface 色）：见下面带 color 的重载。 */
     private View menuRow(int iconRes, String label, final Runnable action) {
         return menuRow(iconRes, label, Ui.onSurface(this), action);
     }
 
+    /** 抽屉里的一行：图标 + 文案 + 点击动作（本身是骨架，带颜色的重载见下）。 */
     private View menuRow(int iconRes, String label, int color, final Runnable action) {
         LinearLayout row = Ui.row(this);
         int padH = Ui.dp(this, 20), padV = Ui.v(this, 14);
@@ -497,6 +539,11 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         return row;
     }
 
+    /**
+     * 新建 / 编辑课程。editing 为 null 就是新建。
+     * 标识色不在这个表单里选——新课程按 7 色轮转自动分配（见 nextColor），
+     * 让用户从「给课程选个颜色」这种小事里解放出来。
+     */
     private void courseDialog(final Db.Course editing) {
         Dialogs.form(this,
                 editing == null ? "新建课程" : "编辑课程",
@@ -526,11 +573,16 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
                 });
     }
 
+    /** 关掉当前表单对话框（保存成功后的收尾）。重复调用安全。 */
     private void closeSubmit() {
         if (submitDialog != null) submitDialog.dismiss();
         submitDialog = null;
     }
 
+    /**
+     * 删除课程前确认。文案里写明「连笔记和待办一起删且不可恢复」——
+     * 这是本 App 里唯一会连带删除用户数据的操作，必须说清楚代价。
+     */
     private void confirmDeleteCourse(final Db.Course c) {
         Dialogs.confirm(this, "删除课程",
                 "确定删除「" + c.name + "」及其所有笔记和待办？此操作不可恢复。",
@@ -543,6 +595,10 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
                 });
     }
 
+    /**
+     * 下一门课的标识色：按已有课程数在 7 色里轮转。
+     * 只保证「相邻的两门不同色」，不追求全局不重复——用完后循环比调色板用尽更好。
+     */
     private String nextColor() {
         String[] colors = {"#4F5BD5", "#7A5CFF", "#E5484D", "#B45D0C",
                 "#0E9F6E", "#2F6FED", "#D63384"};

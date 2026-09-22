@@ -17,7 +17,11 @@ import java.util.List;
 /** 网络层：AI 总结 + 云转写。纯 HttpURLConnection，无需第三方库。 */
 public final class Net {
 
+    /** 工具类，不实例化。 */
     private Net() {}
+
+    // 本类只做传输：把请求发出去、把回复读回来、把底层异常翻译成人话。
+    // 「某家厂商该怎么发、回复长什么样」全部在 AiProto，两边互不知道对方细节。
 
     public static class AiResult {
         public String summary;
@@ -122,11 +126,13 @@ public final class Net {
         }
     }
 
+    /** 截断一段可能很长的响应体，用于错误提示（原始 HTML 错误页动辄几 KB）。 */
     private static String shortOf(String s) {
         String t = s == null ? "" : s.trim().replaceAll("\\s+", " ");
         return t.length() > 80 ? t.substring(0, 80) + "…" : t;
     }
 
+    /** 把模型返回的 keyPoints 数组拼成按行分隔的文本（Db.splitString 按行拆回去）。 */
     private static String toLines(JSONArray arr) {
         if (arr == null) return "";
         StringBuilder sb = new StringBuilder();
@@ -385,6 +391,11 @@ public final class Net {
         out.write((value + "\r\n").getBytes("UTF-8"));
     }
 
+    /**
+     * 状态码 → 中文说法（做的事在提示语里，细节另见 {@link #detailOf}）。
+     * 401/403/404/429 分开说：这几种用户能自己修（换 Key、改地址、等一会儿），
+     * 笼统的「请求失败」只会让人来问「为什么」。
+     */
     private static String friendlyError(int code, String body) {
         String detail = detailOf(body);
         if (code == 401) return "API Key 无效或未授权" + detail;

@@ -66,6 +66,11 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     private final java.util.List<android.animation.ObjectAnimator> recPulses =
             new java.util.ArrayList<android.animation.ObjectAnimator>();
 
+    /**
+     * 停掉录音脉冲动画。
+     * 常驻循环动画即使视图被移除也会继续跑（白耗帧 + 漏引用），所以每次重建内容之前
+     * 都必须调它；单个动画取消失败不影响其它，包 try 继续。
+     */
     private void cancelRecPulses() {
         for (android.animation.ObjectAnimator a : recPulses) {
             try { a.cancel(); } catch (Throwable ignored) {}
@@ -74,6 +79,11 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     }
 
     @Override
+    /**
+     * 进入课程页：先定主题，再取课程数据，最后建界面。
+     * 课程取不到就直接 finish()——比如用户在首页删了这门课再按返回键回来，
+     * 硬撑下去只会在渲染时到处空指针。
+     */
     protected void onCreate(Bundle b) {
         // 必须在 super.onCreate 之前：应用主题资源
         setTheme(Prefs.isDark(this) ? R.style.AppTheme_Dark : R.style.AppTheme);
@@ -92,6 +102,10 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     }
 
     @Override
+    /**
+     * 系统深浅色变化时自己重建（manifest 里声明了 uiMode，系统不会替我们重建）。
+     * 只在「跟随系统」模式下重建；正在录音时不动，免得把录音会话弄丢。
+     */
     public void onConfigurationChanged(Configuration nc) {
         super.onConfigurationChanged(nc);
         // uiMode 在 manifest 的 configChanges 里声明过，系统切深浅色时不会自动重建。
@@ -100,12 +114,20 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     }
 
     @Override
+    /**
+     * 回到前台重画一次：内容可能被别处改过（从设置页回来、导入备份、改了 AI 配置）。
+     * 录音中不重画——那会把正在显示的录音面板顶掉。
+     */
     protected void onResume() {
         super.onResume();
         if (!isRecording()) renderContent();
     }
 
     @Override
+    /**
+     * 释放：中止语音会话（会连临时录音文件一起删）、停计时器、停加载条、停脉冲动画。
+     * speech.cancel() 而不是 stop()：用户已经离开这个页面，不该再回调出笔记。
+     */
     protected void onDestroy() {
         super.onDestroy();
         if (speech != null) speech.cancel();
@@ -134,6 +156,10 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         pageRoot.addView(loading.view);
     }
 
+    /**
+     * 关掉常驻加载条。必须在每次 renderContent() 之前调用：加载条里是无限循环的微光动画，
+     * 视图被移除后还在跑就成了漏网动画。
+     */
     private void hideLoading() {
         if (loading != null) {
             loading.stop();
@@ -142,9 +168,14 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     }
 
     @Override
+    /** Dialogs.DialogHost 的实现：记住当前表单对话框，换主题时要把它一起关掉（对话框不跟随主题）。 */
     public void setSubmitDialog(AlertDialog dlg) { this.submitDialog = dlg; }
 
     @Override
+    /**
+     * 返回键：录音中先确认。录音是「不可恢复」的输入，误退出等于白录一节课；
+     * 确认后结束会话，识别到的文字照样会存成笔记。
+     */
     public void onBackPressed() {
         if (isRecording()) {
             Dialogs.confirm(this, "正在录音",
@@ -236,6 +267,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         renderContent();
     }
 
+    /** 顶栏：返回 + 课程名（过长截断）+ 编辑入口。 */
     private View topBar() {
         LinearLayout bar = Ui.row(this);
         bar.setBackgroundColor(Ui.surface(this));
@@ -280,6 +312,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         return bar;
     }
 
+    /** 编辑课程：改名与教师（标识色不在课程页改，避免和首页的色点语义重复）。 */
     private void editCourse() {
         Dialogs.form(this, "编辑课程",
                 new String[]{"课程名称", "授课教师"},
@@ -360,18 +393,27 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         return seg;
     }
 
+    /** 笔记页签上的数字（全部笔记，不区分是否含重点）。 */
     private int countNotes() {
         int n = 0;
         for (Db.Note x : db.notes(courseId, null)) n++;
         return n;
     }
 
+    /**
+     * 待办页签上的数字：**只算未完成**。
+     * 页签上的数字回答的是「这门课还有多少事」，把已完成的也算进去就没意义了。
+     */
     private int countOpenTodos() {
         int n = 0;
         for (Db.Todo t : db.todos(courseId)) if (!t.completed) n++;
         return n;
     }
 
+    /**
+     * 按当前页签重建内容区。
+     * 每次重建都先清掉脉冲动画与录音面板引用：旧视图被移除后，那些句柄就是野引用了。
+     */
     private void renderContent() {
         content.removeAllViews();
         recPanel = null;
@@ -594,6 +636,10 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                 });
     }
 
+    /**
+     * 列表里的一行摘要：压掉换行、截到 90 字。
+     * 不做「按词边界截断」——中文没有词边界，硬截加省略号反而是最自然的做法。
+     */
     private String preview(String text) {
         if (text == null) return "";
         String t = text.trim();
@@ -643,6 +689,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         }
     }
 
+    /** 分组小标题（「进行中」/「已完成」），比正文小一号、带上下间距。 */
     private View sectionLabel(String text) {
         TextView tv = Ui.text(this, text, Ui.T_LABEL, Ui.onSurfaceVariant(this), true);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -653,6 +700,11 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         return tv;
     }
 
+    /**
+     * 一行待办：左侧圆形勾选框（点一下切换完成）+ 标题（完成后加删除线并变浅）
+     * + 「优先级 · 截止」副标题 + 右侧删除。
+     * 颜色与图标都走 Ui 的语义色，深浅主题自动跟着变。
+     */
     private View todoRow(final Db.Todo t) {
         LinearLayout row = Ui.row(this);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
@@ -721,6 +773,10 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         return row;
     }
 
+    /**
+     * 优先级全名（「高优先级」）。名字与颜色的映射都在 Ui 里，和主页进度条、
+     * 新建待办的选项行共用一份——三处各写一套迟早对不上。
+     */
     private String priorityLabel(String p) {
         // 名字和颜色都归 Ui 管，进度条、图例、分段选项共用一份，免得各写一套
         return Ui.priorityName(p);
@@ -830,6 +886,10 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         EditText dueField;
     }
 
+    /**
+     * 重建待办表单。点优先级会走到这里，所以先把输入框里的值收回 TodoForm 再重画，
+     * 否则用户刚敲的任务内容会被「重建」清掉。
+     */
     private void renderTodoForm(final LinearLayout box, final TodoForm f) {
         if (f.titleField != null) f.title = f.titleField.getText().toString();
         if (f.dueField != null) f.due = f.dueField.getText().toString();
@@ -864,6 +924,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         box.addView(lb);
     }
 
+    /** 对话框里的「标签 + 输入框」，返回输入框供调用方取值。 */
     private EditText formField(LinearLayout box, String label, String hint, String value) {
         formLabel(box, label);
         EditText et = Ui.input(this, hint);
@@ -872,6 +933,10 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         return et;
     }
 
+    /**
+     * 落库。返回 false 表示没保存（对话框不关，用户刚填的内容还在）——
+     * 这与 Dialogs.form 的 Saver 约定配套：只有 true 才关窗。
+     */
     private boolean saveTodo(TodoForm f) {
         String title = f.titleField.getText().toString().trim();
         if (title.length() == 0) {
@@ -896,6 +961,10 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
 
     private boolean isRecording() { return speech != null && speech.isRecording(); }
 
+    /**
+     * 录音入口：先要麦克风权限（API 23+ 运行时申请），拿到之后才真正开始。
+     * 权限与识别服务是两码事——给了权限识别仍可能被厂商策略拦下，见 reallyStartRecording。
+     */
     private void startRecordingFlow() {
         if (Build.VERSION.SDK_INT >= 23
                 && checkSelfPermission(Manifest.permission.RECORD_AUDIO)
@@ -907,6 +976,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     }
 
     @Override
+    /** 权限回调：给了就开录；被拒绝时说清「缺什么、怎么办」，别让按钮点了没反应。 */
     public void onRequestPermissionsResult(int req, String[] perms, int[] results) {
         super.onRequestPermissionsResult(req, perms, results);
         if (req == REQ_MIC) {
@@ -918,6 +988,16 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         }
     }
 
+    /**
+     * 真正开始录音：建语音会话并把三条回调接好。
+     *
+     *  - onPartial：实时文字直接刷到录音面板上；
+     *  - onFinished：有文字就开成笔记，没文字但有音频就走云转写，两者都没有才报「没识别到」；
+     *  - onError：按「哪条路走得通」排优先级——被厂商拦下时弹授权引导（系统设置里
+     *    根本没有开关），只是缺服务/没配好才引导去开云转写。
+     *
+     * 是否同时录音取决于转写模式：只关了云端转写（off）才不保留音频。
+     */
     private void reallyStartRecording() {
         final String mode = Prefs.tsMode(this);
         final boolean recordAudio = !"off".equals(mode);
@@ -986,6 +1066,10 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         startTicker();
     }
 
+    /**
+     * 录音面板：扩散脉冲（在录）+ 计时 + 实时识别文字 + 暂停/结束。
+     * 这块是临时的——它替换掉内容区，结束或取消后 renderContent() 会重建回列表。
+     */
     private void renderRecordingPanel() {
         content.removeAllViews();
         recPanel = Ui.card(this);
@@ -1078,6 +1162,10 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         content.addView(recPanel);
     }
 
+    /**
+     * 每 500ms 刷新一次计时（比 1s 更跟手，又不至于每帧都改文本）。
+     * 会话结束就自己停下，不留常驻定时器。
+     */
     private void startTicker() {
         ticker = new Handler(Looper.getMainLooper());
         tickTask = new Runnable() {
@@ -1091,11 +1179,16 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         ticker.postDelayed(tickTask, 500);
     }
 
+    /** 停掉计时刷新。重复调用安全（会话结束时可能从多处触发）。 */
     private void stopTicker() {
         if (ticker != null && tickTask != null) ticker.removeCallbacks(tickTask);
         ticker = null;
     }
 
+    /**
+     * 把识别（或转写）出来的文字开成一条新笔记，标题带课程名与日期。
+     * 重点清单先用本地关键词提取兜底——用户想更细的可以随后跑一次 AI 总结。
+     */
     private void openRecordedNote(String text) {
         Db.Note n = new Db.Note();
         n.id = Id.gen();
@@ -1147,6 +1240,11 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         }
     }
 
+    /**
+     * 上传录音走云端转写，成功后同样开成笔记。
+     * 这是「这台设备识别不可用」时唯一的出字途径（见 README 里各家 ROM 的差异），
+     * 所以失败提示要具体：地址/Key 的问题、404（服务没有转写接口）都分别说清。
+     */
     private void transcribeThenNote(final byte[] audio) {
         final String ep = Prefs.tsEndpoint(this);
         final String key = Prefs.tsKey(this);
@@ -1218,6 +1316,11 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         }).start();
     }
 
+    /**
+     * AI 总结结果对话框：摘要 + 重点清单 + 「应用到笔记」。
+     * 应用是**覆盖式**写入（摘要替换正文、重点替换重点清单），所以按钮文案写「应用」，
+     * 而不是让人以为只是「看看」。
+     */
     private void showAiResult(final Db.Note n, final Net.AiResult r) {
         LinearLayout box = Ui.column(this);
 
@@ -1256,6 +1359,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         });
     }
 
+    /** null 安全取字符串（课程名、教师等字段可能为空）。 */
     private static String nz(String s) { return s == null ? "" : s; }
 
 }

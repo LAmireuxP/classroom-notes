@@ -5,6 +5,7 @@ import java.util.Calendar;
 /** 日期工具。 */
 public final class Dates {
 
+    /** 工具类，不实例化：只做日期格式化。 */
     private Dates() {}
 
     public static String today() {

@@ -143,6 +143,11 @@ public class SettingsActivity extends BaseSettingsActivity {
 
     // ================== 导入导出 ==================
 
+    /**
+     * 导出 JSON：先把内容生成好放进 pendingExport，再用 SAF 让用户选保存位置。
+     * 顺序不能反——SAF 返回时数据已经准备好，直接写；先选位置再生成的话，
+     * 用户在文件选择器里等的那几秒是白等的，而且失败时还得回头清理空文件。
+     */
     private void doExportJson() {
         try {
             pendingExport = Backup.exportJson(this);
@@ -156,6 +161,7 @@ public class SettingsActivity extends BaseSettingsActivity {
         }
     }
 
+    /** 导出 Markdown：没有笔记时直接拦下，别让用户走完文件选择器才得到一份空文件。 */
     private void doExportMd() {
         try {
             if (Db.get(this).totals()[0] == 0) {
@@ -173,6 +179,11 @@ public class SettingsActivity extends BaseSettingsActivity {
         }
     }
 
+    /**
+     * 导入 JSON：只负责选文件，真正的解析与替换在 onActivityResult 里（要先确认）。
+     * 类型用 * / * 而不是 application/json：各家文件管理器对 json 的 MIME 判定不一致，
+     * 限定类型会让部分设备上刚下载的备份文件变灰选不中。
+     */
     private void doImportJson() {
         Intent it = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         it.addCategory(Intent.CATEGORY_OPENABLE);
@@ -181,6 +192,10 @@ public class SettingsActivity extends BaseSettingsActivity {
     }
 
     @Override
+    /**
+     * SAF 回调：导出就直接写，导入要先读文本、弹确认框（导入是覆盖式清空重建）。
+     * 用户取消（result != RESULT_OK）时清掉 pendingExport，免得下次导出写进旧内容。
+     */
     protected void onActivityResult(int req, int result, Intent data) {
         super.onActivityResult(req, result, data);
         if (result != RESULT_OK || data == null || data.getData() == null) {

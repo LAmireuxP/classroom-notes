@@ -154,6 +154,10 @@ public class AiSettingsActivity extends BaseSettingsActivity {
         Dialogs.sheet(this, "怎么申请 API Key", box);
     }
 
+    /**
+     * 用系统浏览器打开链接。打不开（没有浏览器 / 被策略拦）时把地址直接报出来——
+     * 用户还能手动复制，比一个没反应的按钮强。
+     */
     private void openUrl(String url) {
         try {
             startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW,
@@ -178,6 +182,10 @@ public class AiSettingsActivity extends BaseSettingsActivity {
         return btn;
     }
 
+    /**
+     * 「读取可用模型」：网络往返要一两秒，所以先把抽屉开出来显示「正在读取」，
+     * 拿到清单再替换内容（见 fillModelSheet）——干等一个提示条不如让人看见抽屉在动。
+     */
     private void showModelPicker() {
         final AiProto.Cfg cfg = cfg();
         if (cfg.endpoint.trim().length() == 0) {
@@ -208,6 +216,11 @@ public class AiSettingsActivity extends BaseSettingsActivity {
         }).start();
     }
 
+    /**
+     * 清单拿到后填进抽屉：过滤框 + 计数 + 可滚动的模型列表。
+     * 厂商清单可能上百条（中转站尤其），纯滚动找太费劲，所以过滤框是必需的；
+     * 点一行就把模型名写进模型框并关窗，不重建页面（输入框的值就是最终值）。
+     */
     private void fillModelSheet(final LinearLayout box, final AlertDialog dlg,
                                 final java.util.List<String> models, String err) {
         box.removeAllViews();
@@ -293,6 +306,10 @@ public class AiSettingsActivity extends BaseSettingsActivity {
         return row;
     }
 
+    /**
+     * 厂商预设抽屉。要点是先建好抽屉再往里加行（Dialogs.sheet 会立刻 show），
+     * 行里的点击要能拿到 dlg 才能关窗，所以 dlg 必须在加行之前就存在。
+     */
     private void showPresets() {
         final LinearLayout list = Ui.column(this);
         final AlertDialog dlg = Dialogs.sheet(this, "选择厂商", list);
@@ -338,6 +355,7 @@ public class AiSettingsActivity extends BaseSettingsActivity {
         });
     }
 
+    /** 地址框的占位提示：按当前协议给一个「长什么样」的例子。 */
     private String endpointHint() {
         if (AiProto.DASHSCOPE.equals(cur.id)) return "https://dashscope.aliyuncs.com";
         if (AiProto.ERNIE.equals(cur.id)) return "https://aip.baidubce.com";
@@ -345,6 +363,7 @@ public class AiSettingsActivity extends BaseSettingsActivity {
         return "https://api.deepseek.com/v1";
     }
 
+    /** 模型框的占位提示：按协议给出常见的模型名样式（不是硬性取值）。 */
     private String modelHint() {
         if (AiProto.DASHSCOPE.equals(cur.id)) return "如 qwen-plus / qwen-max";
         if (AiProto.ERNIE.equals(cur.id)) return "如 ernie_speed / completions";
@@ -366,6 +385,10 @@ public class AiSettingsActivity extends BaseSettingsActivity {
         return g;
     }
 
+    /**
+     * 取输入框的值；字段没渲染出来时（比如从文心协议切走、Secret Key 那行不存在）
+     * 回落到内存里的值——这样切换协议不会把已填的内容弄丢。
+     */
     private static String txt(EditText et, String fallback) {
         return et == null ? fallback : et.getText().toString();
     }
@@ -403,6 +426,11 @@ public class AiSettingsActivity extends BaseSettingsActivity {
         super.applyTheme();
     }
 
+    /**
+     * 保存 AI 配置。校验分两段：地址必填（没有它连错都报不出来），其余用
+     * AiProto.missing() 按协议判断——文心要两个密钥，豆包那类可能没有模型名，
+     * 校验规则属于协议的一部分，所以放在协议层而不是这里。
+     */
     private void save() {
         AiProto.Cfg g = cfg();
         if (g.endpoint.trim().length() == 0) {

@@ -23,6 +23,7 @@ import android.widget.TextView;
  */
 public final class Tip {
 
+    /** 工具类，不实例化：提示条挂在当前 Activity 的窗口上，用完即弃。 */
     private Tip() {}
 
     private static final long DURATION = 2200;
@@ -172,6 +173,10 @@ public final class Tip {
         }, actionLabel != null ? DURATION_ACTION : DURATION);
     }
 
+    /**
+     * 立刻收掉当前这条（新的提示要来了）。
+     * 只从界面上摘掉，不走淡出动画——同一时刻出现一进一出两条提示反而更乱。
+     */
     private static void dismissActive() {
         if (sActive == null) return;
         final View old = sActive;
@@ -183,6 +188,10 @@ public final class Tip {
         } catch (Throwable ignored) {}
     }
 
+    /**
+     * 淡出并移除。withEndAction 里再摘视图：动画期间视图还在，直接移除会看不到淡出。
+     * 已经被移除过（动画重复触发）时直接返回，保证幂等。
+     */
     private static void dismiss(final ViewGroup root, final View bar) {
         if (bar.getParent() == null) return;
         if (sActive == bar) sActive = null;

@@ -21,6 +21,7 @@ import android.content.pm.PackageManager;
  */
 public final class VoiceAuth {
 
+    /** 工具类，不实例化：只有「按顺序试几个入口」这一个动作。 */
     private VoiceAuth() {}
 
     /**

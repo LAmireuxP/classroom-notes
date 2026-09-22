@@ -24,6 +24,7 @@ import android.widget.TextView;
  */
 public final class Loading {
 
+    /** 工具类，不实例化；加载条的生命周期由返回的 Handle 管理。 */
     private Loading() {}
 
     /**
@@ -46,6 +47,12 @@ public final class Loading {
         }
     }
 
+    /**
+     * 挂一条加载条并开始微光动画。
+     *
+     * 返回的 Handle 必须 stop()：动画是无限循环的，视图被移除后仍会持有引用继续跑。
+     * 这里只建视图，不负责插入与布局——位置由调用方决定（当前是挂在页面根的底部）。
+     */
     public static Handle show(Context c, String text) {
         LinearLayout card = Ui.card(c);
 

@@ -26,6 +26,7 @@ import android.widget.TextView;
  */
 public final class Dialogs {
 
+    /** 工具类，不实例化：四个入口都是静态方法，弹窗的生命周期由调用方（或 DialogHost）持有。 */
     private Dialogs() {}
 
     public interface OnSubmit {
@@ -42,6 +43,13 @@ public final class Dialogs {
         return root;
     }
 
+    /**
+     * 对话框的统一外观：透明窗口底 + 撑满宽度 + 居中或贴底 + 软键盘挤压。
+     *
+     * bottom=true 时还会播一段「从屏幕高度滑入」的进场动画——原来是固定 40dp 位移，
+     * 对高抽屉来说几乎看不出来，抽屉像是凭空出现。动画先设一个确定在屏外的初值，
+     * 再 post 到真实高度，避免闪一帧。
+     */
     private static void styleDialog(AlertDialog dlg, boolean bottom) {
         dlg.setCanceledOnTouchOutside(true);
         dlg.show();
@@ -288,6 +296,10 @@ public final class Dialogs {
         LinearLayout foot;
     }
 
+    /**
+     * 内容型对话框的外壳：标题 + 可滚动内容 + 底部按钮行（按钮由调用方往 foot 里加）。
+     * content 与 form 都建在它上面——两者只差按钮行为，各写一遍迟早长歪。
+     */
     private static Shell shell(Activity a, String title, View body) {
         Context c = a;
         Shell s = new Shell();
@@ -321,6 +333,7 @@ public final class Dialogs {
         return s;
     }
 
+    /** 取消按钮：只关窗，不回调。 */
     private static void addCancel(final Shell s, String text) {
         TextView cancel = Ui.textButton(s.dlg.getContext(), text);
         cancel.setOnClickListener(new View.OnClickListener() {
@@ -329,6 +342,11 @@ public final class Dialogs {
         s.foot.addView(cancel);
     }
 
+    /**
+     * 主按钮：**按 Saver 的返回值决定关不关窗**。
+     * 这是与「点完就关」的关键区别——表单校验没过时对话框留在原地，
+     * 用户刚填的内容不会因为点早了一下就丢。
+     */
     private static void addOk(final Shell s, String text, final Saver onSave) {
         Context c = s.dlg.getContext();
         TextView ok = Ui.filledButton(c, text);
@@ -364,6 +382,7 @@ public final class Dialogs {
         }
     }
 
+    /** 深度优先找第一个输入框：用来给表单自动聚焦并弹键盘（不依赖调用方传进来）。 */
     private static EditText findEdit(View v) {
         if (v instanceof EditText) return (EditText) v;
         if (v instanceof ViewGroup) {

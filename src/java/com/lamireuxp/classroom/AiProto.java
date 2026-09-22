@@ -24,7 +24,11 @@ import java.util.List;
  */
 public final class AiProto {
 
+    /** 工具类，不实例化：协议拼装与解析都是静态方法，没有会话状态。 */
     private AiProto() {}
+
+    // 本类不碰网络：只负责「按协议拼出请求、按协议从回复里取正文」，
+    // 传输交给 Net，这样协议差异能单独读懂、也单独测（见 cn-test/mock_ai_server.py）。
 
     // ---------- 协议 id ----------
     public static final String OPENAI = "openai";
@@ -38,10 +42,12 @@ public final class AiProto {
     /** 通义原生：和 OpenAI 的 /chat/completions 完全不是一条路。 */
     private static final String DASHSCOPE_PATH = "/api/v1/services/aigc/text-generation/generation";
 
+    /** 设置页里协议选项的顺序（渲染顺序就是它）。 */
     public static String[] ids() {
         return new String[] { OPENAI, DASHSCOPE, ERNIE, CUSTOM };
     }
 
+    /** 协议在界面上的名字。 */
     public static String label(String id) {
         if (DASHSCOPE.equals(id)) return "通义千问（原生）";
         if (ERNIE.equals(id)) return "百度文心";
@@ -49,6 +55,11 @@ public final class AiProto {
         return "OpenAI 兼容";
     }
 
+    /**
+     * 协议的一句话说明，写在选项行下面。
+     * 重点是让人知道「哪家该选哪个」——OpenAI 兼容那一档覆盖了绝大多数厂商，
+     * 通义原生与文心则是结构完全不同的两种。
+     */
     public static String desc(String id) {
         if (DASHSCOPE.equals(id)) return "阿里 DashScope 原生接口，input / output 结构";
         if (ERNIE.equals(id)) return "百度文心老接口：API Key + Secret Key 换 access_token";
@@ -309,6 +320,10 @@ public final class AiProto {
     private static final String[] TEXT_KEYS =
             { "content", "text", "result", "summary", "answer", "reply", "output", "message" };
 
+    /**
+     * 在整棵 JSON 里按 key 的优先级找第一段像正文的文字。
+     * 兜底用：预设外的网关结构千奇百怪，逐家写解析器不划算，认几个常见字段名更抗造。
+     */
     private static String deepText(Object o, int depth) {
         for (int i = 0; i < TEXT_KEYS.length; i++) {
             String r = findKey(o, TEXT_KEYS[i], depth);
@@ -317,6 +332,10 @@ public final class AiProto {
         return null;
     }
 
+    /**
+     * 深度优先找某个 key 下的非空字符串。
+     * depth 限制防止嵌套异常数据把递归拖爆；命中即返回，顺序是「先本层、再子树」。
+     */
     private static String findKey(Object o, String key, int depth) {
         if (depth <= 0) return null;
         if (o instanceof JSONObject) {
@@ -368,6 +387,11 @@ public final class AiProto {
         }
     }
 
+    /**
+     * 厂商预设：一键把地址、协议、模型填好，省掉「去查文档」这一步。
+     * 地址都实测过（无 Key 请求返回 401 说明路径存在）；模型名随厂商迭代，
+     * 拿不准的不填让人用「读取可用模型」挑，console 是申请 Key 的控制台入口。
+     */
     public static List<Preset> presets() {
         List<Preset> l = new ArrayList<Preset>();
         l.add(new Preset("DeepSeek", "https://api.deepseek.com/v1", OPENAI, "deepseek-chat",
@@ -426,11 +450,13 @@ public final class AiProto {
         return t;
     }
 
+    /** 补上前导斜杠，保证 base + path 拼出来只有一个斜杠。 */
     private static String slash(String p) {
         String t = p.trim();
         return t.startsWith("/") ? t : "/" + t;
     }
 
+    /** URL 编码（换 token 的参数挂在查询串上，Key 里可能带特殊字符）。 */
     private static String enc(String s) {
         try {
             return java.net.URLEncoder.encode(s, "UTF-8");

@@ -62,13 +62,22 @@ public class SpeechSession {
     private boolean recordAudio = false;
     private long startedAt = 0;
 
+    /**
+     * @param ctx     只要有 getCacheDir() 可用即可（录音临时文件落在这里）
+     * @param listener 识别结果与错误都回调到它；所有回调都在主线程
+     */
     public SpeechSession(Context ctx, Listener listener) {
         this.ctx = ctx;
         this.listener = listener;
     }
 
+    /** 会话是否在跑（识别被放弃、降级成纯录音时仍然是 true——录音还在继续）。 */
     public boolean isRecording() { return recording; }
+
+    /** 是否处于暂停（识别与录音都停了；恢复时识别会重新开始听）。 */
     public boolean isPaused() { return paused; }
+
+    /** 已录制时长（毫秒）。没在录时返回 0，界面上的计时器才不会在结束后继续跳。 */
     public long elapsedMs() { return recording ? System.currentTimeMillis() - startedAt : 0; }
 
     /**
@@ -102,6 +111,7 @@ public class SpeechSession {
         }
     }
 
+    /** 这台设备上能不能找到可用的识别服务（找不到就只能靠录音 + 云端转写）。 */
     public static boolean recognitionAvailable(Context c) {
         return findService(c) != null;
     }
@@ -197,6 +207,12 @@ public class SpeechSession {
         }
     };
 
+    /**
+     * 识别请求参数：中文、要中间结果、只要一个候选。
+     *
+     * EXTRA_PARTIAL_RESULTS 是「实时出字」的关键——没有它，用户要等到整段结束才看见字；
+     * EXTRA_MAX_RESULTS 取 1 是因为界面上只显示一条，多要候选只是白等。
+     */
     private Intent recognizerIntent() {
         Intent it = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         it.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
@@ -207,6 +223,12 @@ public class SpeechSession {
         return it;
     }
 
+    /**
+     * 开始（或重新开始）听。识别器是懒创建的：真正要用时才绑定服务。
+     *
+     * 顺手挂上 4 秒看门狗：MIUI 这类 ROM 在「不肯放行」时既不报错也不回调，
+     * 界面上就成了一个假的录音面板——到点还没有任何回调就按识别不可用处理。
+     */
     private void startRecognizer() {
         try {
             if (recognizer == null) {
@@ -248,6 +270,7 @@ public class SpeechSession {
         startRecognizer();
     }
 
+    /** 释放识别器。cancel/destroy 都要包 try：个别 ROM 在未连接状态下会抛异常。 */
     private void destroyRecognizer() {
         if (recognizer != null) {
             try { recognizer.cancel(); } catch (Throwable ignored) {}
@@ -359,6 +382,12 @@ public class SpeechSession {
         }
     };
 
+    /**
+     * 连续识别：一次结果/一次超时之后重新开始听，直到用户按停。
+     *
+     * 延迟 180ms 不是随手写的：紧接着 onResults 立刻 startListening，部分 ROM 会回
+     * ERROR_RECOGNIZER_BUSY，识别就此断掉——用户看到的就是「说着说着不认了」。
+     */
     private void maybeRestart() {
         if (recording && !paused && recognizer != null) {
             wantRestart = true;
@@ -375,6 +404,10 @@ public class SpeechSession {
         }
     }
 
+    /**
+     * 暂停 / 恢复。识别与录音一起停：只停一个的话，暂停期间要么继续录进静音、
+     * 要么继续识别被用户听到，都不是「暂停」该有的样子。
+     */
     public void setPaused(boolean p) {
         paused = p;
         if (p) {
@@ -386,6 +419,7 @@ public class SpeechSession {
         }
     }
 
+    /** 当前可见的全文 = 已确认的最终文本 + 正在说的那句中间结果。 */
     public String fullText() {
         String f = finalText.toString();
         if (partial != null && partial.length() > 0) {
@@ -394,6 +428,14 @@ public class SpeechSession {
         return f;
     }
 
+    /**
+     * 开始录音（云转写的原料）。
+     *
+     * 16kHz 单声道 AAC：语音识别的标准采样率，40 分钟课约 12 MB，上传不肉疼。
+     * 文件落在 cacheDir——系统清理时能回收，不用我们管生命周期。
+     *
+     * 任何一步失败都只是「没有录音兜底」，不抛给调用方：识别本身还能继续用。
+     */
     private void startRecorder() {
         try {
             recFile = new File(ctx.getCacheDir(), "rec_" + System.currentTimeMillis() + ".m4a");
@@ -412,7 +454,10 @@ public class SpeechSession {
         }
     }
 
-    /** 停止并回调结果。 */
+    /**
+     * 正常结束：停掉识别与录音，把音频读进内存后**删掉临时文件**，再回调结果。
+     * 读文件必须在删之前完成（stop/release 之后文件才可读，某些 ROM 上早读会拿到空数据）。
+     */
     public void stop() {
         if (!recording) return;
         recording = false;
@@ -437,7 +482,11 @@ public class SpeechSession {
         listener.onFinished(fullText().trim(), audio);
     }
 
-    /** 中止，不回调结果。 */
+    /**
+     * 中止：不回调结果，并且**删除录音文件**。
+     * 注意这与「识别失败」不是一回事——识别失败走的是降级（音频留着），
+     * 只有调用方明确不要这段录音时才走这里。
+     */
     public void cancel() {
         recording = false;
         paused = false;
@@ -455,6 +504,7 @@ public class SpeechSession {
         if (recFile != null && recFile.exists()) recFile.delete();
     }
 
+    /** 把录音整段读进内存。时长由用户控制（一节课量级），不做流式。 */
     private byte[] readFile(File f) {
         try {
             FileInputStream in = new FileInputStream(f);
@@ -503,6 +553,7 @@ public class SpeechSession {
         }
     }
 
+    /** 自查麦克风权限：API 23 以下安装即授予，直接算有。 */
     private static boolean hasMicPermission(Context c) {
         if (Build.VERSION.SDK_INT < 23) return true;
         return c.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)

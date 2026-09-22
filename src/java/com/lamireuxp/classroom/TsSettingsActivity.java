@@ -147,6 +147,7 @@ public class TsSettingsActivity extends BaseSettingsActivity {
         if (model != null) modelField.setText(model);
     }
 
+    /** 取输入框文本；字段没渲染出来时（切到「关闭」）回落到传入的兜底值。 */
     private static String fieldText(EditText et, String fallback) {
         return et == null ? fallback : et.getText().toString();
     }
@@ -193,6 +194,10 @@ public class TsSettingsActivity extends BaseSettingsActivity {
         return row;
     }
 
+    /**
+     * 保存转写设置。关闭模式也照样保存（保留地址等配置，下次开回来不用重填），
+     * 只是不校验地址——「关闭」本身就是一种需要提交的合法状态。
+     */
     private void save() {
         if ("off".equals(mode)) {
             // 关掉时保留地址等配置，下次开回来不用重填

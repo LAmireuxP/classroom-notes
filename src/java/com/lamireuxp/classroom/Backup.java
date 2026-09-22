@@ -18,7 +18,12 @@ import java.util.List;
  */
 public final class Backup {
 
+    /** 工具类，不实例化。 */
     private Backup() {}
+
+    // 备份走两条独立通道：JSON（可再导入，格式与网页版互通）与 Markdown（给人看）。
+    // 两者都只做「把 Db 里的东西转成文本 / 把文本转回 Db」，不关心文件落在哪——
+    // 选择路径、读写流都是调用方（Activity 的 SAF 回调）的事。
 
     /** 根节点上的格式标记。导入时只用来挡「拿错文件」，不强求存在。 */
     private static final String FORMAT = "classroom-v2";
@@ -238,5 +243,6 @@ public final class Backup {
         }
     }
 
+    /** null 安全取字符串（导出时字段可能为空）。 */
     private static String nz(String s) { return s == null ? "" : s; }
 }

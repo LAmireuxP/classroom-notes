@@ -23,6 +23,7 @@ import android.widget.LinearLayout;
  */
 public final class ThemeSwitch {
 
+    /** 工具类，不实例化：开关是现场构建的一个视图。 */
     private ThemeSwitch() {}
 
     private static final int TRACK_W = 52;   // 轨道宽 dp

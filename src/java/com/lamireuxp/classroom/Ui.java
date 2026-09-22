@@ -33,6 +33,7 @@ import android.widget.TextView;
  */
 public final class Ui {
 
+    /** 工具类，不实例化：全是静态方法，没有状态。 */
     private Ui() {}
 
     // ================= 尺寸 =================
@@ -271,6 +272,14 @@ public final class Ui {
         // ---- 语义色快捷方法 ----
 
     public static int primary(Context c) { return tone(c, "primary"); }
+    /**
+     * 语义色快捷方法。命名与 res/values/colors.xml 里的 token 一一对应：
+     * 取色时按「当前是深色还是浅色」自动加 light_ / dark_ 前缀（见 tone()），
+     * 所以界面代码里不出现具体色值，换主题就是换一套 token。
+     *
+     * 加新色要三处一起加：colors.xml 的 light_/dark_ 两个值、这里一个快捷方法；
+     * 漏掉 dark_ 的话 tone() 会兜底成纯黑/纯白，深色主题下那块会很难看。
+     */
     public static int onPrimary(Context c) { return tone(c, "on_primary"); }
     public static int primaryContainer(Context c) { return tone(c, "primary_container"); }
     public static int onPrimaryContainer(Context c) { return tone(c, "on_primary_container"); }
@@ -345,6 +354,11 @@ public final class Ui {
         return d;
     }
 
+    /**
+     * 圆形背景（色点、勾选框、脉冲都用它）。
+     * 用 OVAL + setSize 而不是给矩形设满圆角：满圆角在非正方形尺寸下会变成胶囊，
+     * 而这个方法的所有调用点都默认「给多大就是多大圆」。
+     */
     public static GradientDrawable circle(int color, int sizePx) {
         GradientDrawable d = new GradientDrawable();
         d.setShape(GradientDrawable.OVAL);
@@ -363,6 +377,11 @@ public final class Ui {
         return d;
     }
 
+    /**
+     * 带涟漪的可点背景。radiusDp 传 R_FULL 就是胶囊形（列表行、按钮都用它）。
+     * 涟漪用系统 RippleDrawable 而不是自己画：触摸反馈要跟手指位置走，
+     * 自己实现的那套（按下缩放）只适合做辅助动效，见 pressScale()。
+     */
     public static RippleDrawable ripple(Context c, int fillColor, float radiusDp) {
         GradientDrawable base = round(c, fillColor, Color.TRANSPARENT, radiusDp, 0);
         GradientDrawable mask = round(c, Color.WHITE, Color.TRANSPARENT, radiusDp, 0);
@@ -411,6 +430,13 @@ public final class Ui {
     public static final float T_LABEL = 12;
     public static final float T_CAPTION = 11;
 
+    /**
+     * 全 App 唯一的文本工厂：字号用 T_* 档位、颜色必须是语义色、bold 控制字重。
+     *
+     * includeFontPadding(false) 不是可选的美化：TextView 默认会按字体 ascent/descent
+     * 留出一圈额外内边距，中文行高会因此比预期高一截——纵向紧排的列表里
+     * 这一截会让行与行怎么调都对不齐。
+     */
     public static TextView text(Context c, String s, float sizeSp, int color, boolean bold) {
         TextView tv = new TextView(c);
         tv.setText(s == null ? "" : s);
@@ -445,6 +471,7 @@ public final class Ui {
         return ll;
     }
 
+    /** 横向容器（默认垂直居中）。纵向用 column()——两个方法成对使用，别手写 LinearLayout。 */
     public static LinearLayout row(Context c) {
         LinearLayout ll = new LinearLayout(c);
         ll.setOrientation(LinearLayout.HORIZONTAL);
@@ -567,6 +594,7 @@ public final class Ui {
         return new LinearLayout.LayoutParams(w, h);
     }
 
+    /** 常用布局参数简写：需要按权重分配宽度时传 w=0 配 weight（列表行的固定写法）。 */
     public static LinearLayout.LayoutParams lpW(int w, int h, float weight) {
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(w, h);
         p.weight = weight;
@@ -604,6 +632,12 @@ public final class Ui {
         return col;
     }
 
+    /**
+     * 一个优先级一行：色点 + 「高 0/1」+ 进度条。
+     * 标签用权重占固定比例（而不是跟内容走），三条的进度条左端才会对齐；
+     * 条内用「已完成 / 未完成」两个带权重的子 View——只放一个权重为完成比的 fill
+     * 拿不到按比例的效果（LinearLayout 按权重之和分配剩余空间，独苗会吃掉整段）。
+     */
     private static View priorityRow(Context c, String key, int total, int done, boolean gap) {
         int color = priorityColor(c, key);
         LinearLayout row = row(c);

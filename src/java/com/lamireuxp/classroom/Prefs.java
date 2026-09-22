@@ -9,6 +9,10 @@ public class Prefs {
 
     private static final String FILE = "settings";
 
+    /**
+     * 取偏好文件。用 applicationContext 是有意的：设置读写会从后台线程发生，
+     * 拿到 Activity 的 Context 就等于把 Activity 挂在静态引用上，容易漏内存。
+     */
     private static SharedPreferences sp(Context c) {
         return c.getApplicationContext().getSharedPreferences(FILE, Context.MODE_PRIVATE);
     }
@@ -19,6 +23,11 @@ public class Prefs {
     public static final String THEME_LIGHT = "light";
     public static final String THEME_DARK = "dark";
 
+    /**
+     * 主题模式：system | light | dark。
+     * 默认跟随系统，但 1.0 只有一个 dark 布尔——用 contains("dark") 区分「从没设过」
+     * 和「显式设成浅色」：老用户升级上来继续跟随系统，而不是被锁死在浅色。
+     */
     public static String themeMode(Context c) {
         SharedPreferences p = sp(c);
         String m = p.getString("theme_mode", null);
@@ -32,6 +41,7 @@ public class Prefs {
         return THEME_SYSTEM;
     }
 
+    /** 写入主题模式（调用方负责重建界面：设置页与首页都是就地重绘）。 */
     public static void setThemeMode(Context c, String mode) {
         sp(c).edit().putString("theme_mode", mode).apply();
     }
@@ -56,12 +66,15 @@ public class Prefs {
     private static String aiProtocol(Context c) {
         return sp(c).getString("ai_protocol", AiProto.OPENAI);
     }
+    /** AI 服务地址。新装默认 DeepSeek（填好 Key 就能用），可按厂商预设改成别家。 */
     private static String aiEndpoint(Context c) {
         return sp(c).getString("ai_endpoint", "https://api.deepseek.com/v1");
     }
+    /** AI Key。自建服务常不需要，所以允许为空（由 AiProto.missing 在总结前判断）。 */
     private static String aiKey(Context c) { return sp(c).getString("ai_key", ""); }
     /** 文心协议的 client_secret。 */
     private static String aiSecret(Context c) { return sp(c).getString("ai_secret", ""); }
+    /** AI 模型名。与地址一样只对新装给默认值，用户改过就以存的为准。 */
     private static String aiModel(Context c) { return sp(c).getString("ai_model", "deepseek-chat"); }
     /** 自定义协议：请求路径。 */
     private static String aiPath(Context c) { return sp(c).getString("ai_path", ""); }
@@ -84,6 +97,11 @@ public class Prefs {
         return g;
     }
 
+    /**
+     * 存整套 AI 配置（协议、地址、Key、模型、自定义协议的路径/取值/鉴权）。
+     * 空模型名存空值而不是塞默认值：豆包那类要填「接入点 ID」的服务，硬塞一个
+     * 默认模型名只会让用户拿到看不懂的报错；空值由 AiProto.missing 在总结前拦下并说清。
+     */
     public static void saveAi(Context c, AiProto.Cfg g) {
         sp(c).edit()
                 .putString("ai_protocol", g.id)
@@ -102,10 +120,17 @@ public class Prefs {
     // ---------- 转写 ----------
     // mode: off | server | api
     public static String tsMode(Context c) { return sp(c).getString("ts_mode", "off"); }
+    /** 转写服务地址（默认空：没配就不要尝试上传）。 */
     public static String tsEndpoint(Context c) { return sp(c).getString("ts_endpoint", ""); }
+    /** 转写 Key（自建服务常不需要）。 */
     public static String tsKey(Context c) { return sp(c).getString("ts_key", ""); }
+    /** 转写模型名，默认 whisper-1（自建 whisper.cpp 与硅基流动都认这个形状）。 */
     public static String tsModel(Context c) { return sp(c).getString("ts_model", "whisper-1"); }
 
+    /**
+     * 存转写配置。模型名留空时兜底成 whisper-1——转写只有 OpenAI 兼容一种协议，
+     * 这个默认值在自建 whisper.cpp / 硅基流动上都认。
+     */
     public static void saveTs(Context c, String mode, String endpoint, String key, String model) {
         sp(c).edit()
                 .putString("ts_mode", mode)
@@ -120,6 +145,7 @@ public class Prefs {
     // AI 总结；反过来 AI 总结改了不影响转写。开关默认开，用户可在转写设置里关掉。
     public static boolean aiSyncFromTs(Context c) { return sp(c).getBoolean("ts_sync_ai", true); }
 
+    /** 「转写保存时同步给 AI 总结」的开关（默认开）。 */
     public static void setAiSyncFromTs(Context c, boolean on) {
         sp(c).edit().putBoolean("ts_sync_ai", on).apply();
     }
@@ -145,6 +171,7 @@ public class Prefs {
         saveAi(c, g);
     }
 
+    /** 去掉结尾斜杠。拼接路径前统一走这里，免得出现 `…/v1//chat/completions`。 */
     private static String trimSlash(String s) {
         if (s == null) return "";
         String t = s.trim();

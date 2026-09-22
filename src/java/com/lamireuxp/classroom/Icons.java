@@ -18,6 +18,7 @@ import android.widget.TextView;
  */
 public final class Icons {
 
+    /** 工具类，不实例化：按钮与图标都是现造现用，不缓存视图。 */
     private Icons() {}
 
     // 统一的按钮内部度量（dp）

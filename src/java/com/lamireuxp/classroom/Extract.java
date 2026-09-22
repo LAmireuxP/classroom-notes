@@ -6,6 +6,7 @@ import java.util.List;
 /** 关键词提取：AI 不可用时的本地兜底方案（改进自原版）。 */
 public final class Extract {
 
+    /** 工具类，不实例化。 */
     private Extract() {}
 
     private static final String[] KEYWORDS = {
@@ -14,6 +15,12 @@ public final class Extract {
             "需要掌握", "一定记住", "定义", "公式", "结论", "因此", "所以"
     };
 
+    /**
+     * 按关键词与句式从正文里挑出像重点的句子。
+     *
+     * 这是「没有 AI 也要能用」的兜底：录音转写出文字后先把重点标出来，
+     * 用户配好 AI 再跑一次总结即可。宁可多挑几句，也不要漏掉考点。
+     */
     public static List<String> keyPoints(String text) {
         List<String> out = new ArrayList<String>();
         if (text == null || text.trim().length() == 0) return out;
