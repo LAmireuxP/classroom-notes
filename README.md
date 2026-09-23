@@ -3,16 +3,17 @@
 课程笔记、待办、语音转写、AI 总结。纯原生 Java 实现，零第三方依赖，APK 约 187 KB。
 当前版本 **1.3**。
 
-## 致谢
+## 参考与致谢
 
-本项目源自 **[@lkx478482771-star](https://github.com/lkx478482771-star)** 的开源项目「课堂整理」：
-课程、笔记、待办的数据结构与整体交互设计都来自原作者，感谢他的开源分享。
+功能构成与交互设计参考了 **[@lkx478482771-star](https://github.com/lkx478482771-star)** 的开源项目
+「课堂整理」：课程、笔记、待办三块的功能划分、数据字段与整体交互取自原作者的设计，在此致谢。
 
-本仓库是它的原生 Java 重写。原版是 Capacitor + WebView 壳，几项核心能力在 WebView 里直接失效
-（`webkitSpeechRecognition` 不存在，录音转写整块废掉；blob 下载静默失败，导出点了没反应），
-所以这里改用系统原生实现，同时保持零第三方依赖：
+代码不是在该项目上修改，而是按同样的功能目标在 Android 原生环境下重新实现——本项目为原生
+Java + Android SDK，不含 WebView 与前端框架，也不依赖任何第三方库。参考项目采用 Capacitor +
+WebView 方案，几项核心能力在 WebView 里无法工作（`webkitSpeechRecognition` 不存在，录音转写
+整块失效；blob 下载静默失败，导出点了没反应），这也是改用原生实现的原因：
 
-| 项目 | 原版（Capacitor 网页壳） | 现在 |
+| 项目 | 参考项目（Capacitor + WebView） | 本项目（原生 Java） |
 | --- | --- | --- |
 | 技术栈 | Capacitor + WebView + 前端 JS | 原生 Java + Android SDK，零依赖 |
 | 数据存储 | localStorage（JSON 整存整取） | SQLite（增量读写 + 索引） |
@@ -20,8 +21,8 @@
 | 导入导出 | `a.download`，WebView 里点不动 | SAF 系统文件选择器 |
 | APK 体积 | 3.7 MB | 约 187 KB |
 
-在此基础上的继续维护（云转写上传的 MIME 修正、Windows 构建脚本 `build-pc.sh`、语音识别修复、
-设置页重构等）记在下方「更新日志」。
+后续的功能迭代与问题修复（云转写上传的 MIME 修正、Windows 构建脚本 `build-pc.sh`、语音识别
+兼容、设置页重构等）见下方「更新日志」。
 
 ## 功能
 
