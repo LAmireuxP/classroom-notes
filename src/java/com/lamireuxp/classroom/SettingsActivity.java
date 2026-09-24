@@ -41,6 +41,8 @@ public class SettingsActivity extends BaseSettingsActivity {
 
         // ---- 数据 ----
         body.addView(sectionTitle("数据"));
+        body.addView(navRow(R.drawable.ic_trash, "回收站", trashSubtitle(),
+                TrashActivity.class));
         body.addView(actionRow(R.drawable.ic_export, "导出 JSON 备份", new Runnable() {
             @Override public void run() { doExportJson(); }
         }));
@@ -50,6 +52,15 @@ public class SettingsActivity extends BaseSettingsActivity {
         body.addView(actionRow(R.drawable.ic_import, "导入 JSON 备份", new Runnable() {
             @Override public void run() { doImportJson(); }
         }));
+    }
+
+    /**
+     * 回收站入口的副标题。把「里面有多少东西」写出来，用户才知道要不要进去看看——
+     * 只写「误删的内容可以在这里恢复」的话，得点进去才知道有没有东西可恢复。
+     */
+    private String trashSubtitle() {
+        int n = Db.get(this).trashCount();
+        return n == 0 ? "误删的课程、笔记、待办可以在这里恢复" : "有 " + n + " 项待清理";
     }
 
     /** 主题三选一的行：当前项打勾，点了立即生效。 */
@@ -216,6 +227,9 @@ public class SettingsActivity extends BaseSettingsActivity {
                             @Override public void run() {
                                 try {
                                     int n = Backup.importJson(SettingsActivity.this, text);
+                                    // 导入是整体替换：旧的闹钟全部作废，新的提醒要重新排。
+                                    // 不重排的话，导入进来的提醒时间在库里躺着，却一个都不会响。
+                                    Reminders.rescheduleAll(SettingsActivity.this);
                                     Tip.success(SettingsActivity.this, "已导入 " + n + " 门课程");
                                 } catch (Throwable e) {
                                     Tip.error(SettingsActivity.this, "导入失败：" + e.getMessage());

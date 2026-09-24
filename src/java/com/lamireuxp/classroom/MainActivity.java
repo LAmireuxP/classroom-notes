@@ -23,7 +23,8 @@ import java.util.List;
 /**
  * 首页 —— Material Design 3 布局。
  *
- * 结构：Top App Bar / 统计摘要卡 / SearchBar / 课程卡片列表 / FAB / 底部工具行
+ * 结构：Top App Bar / SearchBar / （统计摘要卡 + 课程卡片列表）或（跨课程搜索结果）/ FAB。
+ * 搜索框有关键词时整页切成结果态，两者不同时出现——搜索是「专注模式」。
  */
 public class MainActivity extends Activity implements Dialogs.DialogHost {
 
@@ -52,6 +53,9 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         setTheme(Prefs.isDark(this) ? R.style.AppTheme_Dark : R.style.AppTheme);
         super.onCreate(b);
         db = Db.get(this);
+        // 闹钟不跨重启，且部分 ROM 在「强制停止」时会顺手清掉它。
+        // 每次启动重新排一遍是这里最省心的兜底：查一次库 + 几次 set，代价可以忽略。
+        Reminders.rescheduleAll(this);
         applyWindowTheme();
         buildUi();
     }
@@ -206,7 +210,11 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
 
         // 标题区：图标 + 大标题
         LinearLayout titleBox = Ui.row(this);
-        ImageView logo = Icons.icon(this, R.drawable.ic_star, Ui.primary(this), 24);
+        // 顶栏标志：用设计稿那个「鹿角 + 话筒 + 声波」的单色矢量。
+        // 它由 tools/svg-to-vectordrawable.py 从原设计 SVG 生成（描边改纯色——
+        // VectorDrawable 不支持描边渐变，而这里本来就要用 SRC_IN 套主题色，渐变没有意义）。
+        // 外边两道声波带 strokeAlpha=0.7，SRC_IN 只换颜色不换 alpha，那层「弱化」保住了。
+        ImageView logo = Icons.icon(this, R.drawable.ic_brand, Ui.primary(this), 24);
         titleBox.addView(logo);
         TextView title = Ui.text(this, "课堂整理", Ui.T_HEADLINE, Ui.onSurface(this), true);
         LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(
@@ -246,11 +254,11 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
     private void refresh() {
         contentBox.removeAllViews();
 
-        List<Db.Course> courses = db.courses();
-
         // ---- 搜索栏（MD3 SearchBar + 前导图标）----
-        // 排在待办进度前面：搜索是「现在就要用」的，进度是「顺便看一眼」的
-        LinearLayout searchBox = Ui.searchBarWithIcon(this, "搜索笔记…", R.drawable.ic_search);
+        // 排在待办进度前面：搜索是「现在就要用」的，进度是「顺便看一眼」的。
+        // 首页搜的是**全部课程**（hint 里写明范围）——课程页那一条才是课内搜索。
+        LinearLayout searchBox = Ui.searchBarWithIcon(this, "搜索全部课程的笔记…",
+                R.drawable.ic_search);
         search = Ui.searchInput(searchBox);
         if (query.length() > 0) search.setText(query);
         search.addTextChangedListener(new TextWatcher() {
@@ -258,33 +266,48 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void afterTextChanged(Editable s) {
                 query = s.toString().trim();
-                refreshCourseList();
+                // 只重建搜索框下面那块。连搜索框一起重建的话，输入焦点和软键盘
+                // 会在每敲一个字时掉一次——这正是原来把重建范围死死限定在列表上的原因。
+                fillBelowSearch();
             }
         });
         contentBox.addView(searchBox);
 
-        // ---- 统计摘要（有待办时才出现；课程/笔记数在「我的课程」标题右边）----
-        if (!courses.isEmpty()) {
-            View stats = statsSummary();
-            if (stats != null) contentBox.addView(stats);
-        }
-
-        contentBox.addView(courseListContainer());
+        belowBox = Ui.column(this);
+        contentBox.addView(belowBox);
+        fillBelowSearch();
     }
 
     private LinearLayout listBox;
+    /** 搜索框下面那块（统计卡 + 课程列表，或者搜索结果）。输入时只重建它。 */
+    private LinearLayout belowBox;
 
-    /** 课程列表容器。搜索框每次输入都只重建这一块，不动上面的统计卡与搜索栏。 */
+    /**
+     * 搜索框下方的内容：有关键词就是跨课程搜索结果，否则是统计卡 + 课程列表。
+     *
+     * 两者不同时出现。搜索是「专注模式」——结果下面再挂一份完整的课程列表，
+     * 用户会分不清哪块是结果、哪块是导航。
+     */
+    private void fillBelowSearch() {
+        if (belowBox == null) return;
+        belowBox.removeAllViews();
+
+        if (query.length() > 0) {
+            belowBox.addView(searchResults());
+            return;
+        }
+
+        // ---- 统计摘要。一门课都没有时不画：那时候还不存在「待办」这件事，
+        //      页面上该出现的只有「去建第一门课」这一个引导 ----
+        if (db.courseCount() > 0) belowBox.addView(statsSummary());
+        belowBox.addView(courseListContainer());
+    }
+
+    /** 课程列表容器。 */
     private View courseListContainer() {
         listBox = Ui.column(this);
         fillCourseList();
         return listBox;
-    }
-
-    /** 搜索框输入时调用：只重建列表部分（连统计卡都不重算）。 */
-    private void refreshCourseList() {
-        if (listBox == null) return;
-        fillCourseList();
     }
 
     /**
@@ -297,7 +320,8 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         List<Db.Course> courses = db.courses();
 
         if (courses.isEmpty()) {
-            listBox.addView(emptyState());
+            listBox.addView(emptyState(R.drawable.ic_folder, "还没有课程",
+                    "点击右下角 + 新建第一门课程"));
             return;
         }
 
@@ -328,50 +352,188 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         for (int i = 0; i < courses.size(); i++) {
             listBox.addView(courseCard(courses.get(i)));
             // 行间内嵌分隔线（MD3 列表规范），最后一行不加
-            if (i < courses.size() - 1) {
-                View line = new View(this);
-                line.setBackgroundColor(Ui.outlineVariant(this));
-                LinearLayout.LayoutParams lineLp = new LinearLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, Ui.dp(this, 0.8f)));
-                lineLp.leftMargin = Ui.dp(this, 38);
-                line.setLayoutParams(lineLp);
-                listBox.addView(line);
-            }
+            if (i < courses.size() - 1) listBox.addView(divider());
         }
     }
 
     /**
+     * 搜索结果 —— 跨全部课程搜笔记。
+     *
+     * 每行都带课程名和课程色点：跨课程搜出来的标题如果不标明来自哪门课，
+     * 用户得逐个点进去确认，搜索反而比翻课程列表更慢。
+     */
+    private View searchResults() {
+        List<Db.NoteHit> hits = db.searchNotes(query);
+
+        LinearLayout box = Ui.column(this);
+
+        // 计数行：与课程页「共 N 条笔记」同一个位置、同一种语气
+        TextView count = Ui.text(this,
+                hits.isEmpty() ? "没有匹配的笔记" : "找到 " + hits.size() + " 条笔记",
+                Ui.T_LABEL, Ui.onSurfaceVariant(this), false);
+        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cp.bottomMargin = Ui.v(this, 10);
+        count.setLayoutParams(cp);
+        box.addView(count);
+
+        if (hits.isEmpty()) {
+            box.addView(emptyState(R.drawable.ic_md, "没有匹配的笔记",
+                    "换个关键词试试，搜索覆盖全部课程的标题、正文和重点"));
+            return box;
+        }
+
+        for (int i = 0; i < hits.size(); i++) {
+            box.addView(searchHit(hits.get(i)));
+            if (i < hits.size() - 1) box.addView(divider());
+        }
+        return box;
+    }
+
+    /**
+     * 一条搜索结果。点进去打开所属课程，并把那条笔记展开、滚到眼前——
+     * 只跳到课程页的话，用户还得在列表里再找一遍，等于没搜。
+     */
+    private View searchHit(final Db.NoteHit h) {
+        LinearLayout row = Ui.row(this);
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rlp.bottomMargin = Ui.v(this, 2);
+        row.setLayoutParams(rlp);
+        int padH = Ui.dp(this, 14), padV = Ui.v(this, 14);
+        row.setPadding(padH, padV, padH, padV);
+        row.setBackground(Ui.ripple(this, Color.TRANSPARENT, Ui.R_M));
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setMinimumHeight(Ui.vMin(this, 64));
+
+        // 色点用**课程色**而不是主题色：一眼看出这条来自哪门课
+        View dot = new View(this);
+        dot.setBackground(Ui.circle(Ui.parseColor(h.courseColor, Ui.primary(this)),
+                Ui.dp(this, 10)));
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                Ui.dp(this, 10), Ui.dp(this, 10));
+        dlp.rightMargin = Ui.dp(this, 14);
+        dot.setLayoutParams(dlp);
+        row.addView(dot);
+
+        LinearLayout mid = Ui.column(this);
+        mid.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        // 头行：笔记标题 + 日期
+        LinearLayout head = Ui.row(this);
+        TextView title = Ui.text(this, nz(h.note.title), Ui.T_TITLE,
+                Ui.onSurface(this), true);
+        title.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        title.setMaxLines(1);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        head.addView(title);
+        TextView date = Ui.text(this, Dates.shortDate(h.note.date), Ui.T_LABEL,
+                Ui.onSurfaceVariant(this), false);
+        LinearLayout.LayoutParams dtp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        dtp.leftMargin = Ui.dp(this, 8);
+        date.setLayoutParams(dtp);
+        head.addView(date);
+        mid.addView(head);
+
+        // 次行：课程名 + 正文摘要。课程名放最前面——它是这一行里最需要先看到的信息
+        String courseName = (h.courseName == null || h.courseName.length() == 0)
+                ? "未分类" : h.courseName;
+        TextView meta = Ui.text(this, courseName + " · " + Ui.preview(h.note.content, 60),
+                Ui.T_LABEL, Ui.onSurfaceVariant(this), false);
+        meta.setMaxLines(2);
+        meta.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams mtp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        mtp.topMargin = Ui.v(this, 3);
+        meta.setLayoutParams(mtp);
+        mid.addView(meta);
+        row.addView(mid);
+
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                Intent it = new Intent(MainActivity.this, CourseActivity.class);
+                it.putExtra("courseId", h.note.courseId);
+                it.putExtra("noteId", h.note.id);     // 让课程页把这条展开并滚到眼前
+                startActivity(it);
+            }
+        });
+        return row;
+    }
+
+    /** 列表行之间的内嵌分隔线（MD3 列表规范），左边留出圆点那一段的宽度。 */
+    private View divider() {
+        View line = new View(this);
+        line.setBackgroundColor(Ui.outlineVariant(this));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, Ui.dp(this, 0.8f)));
+        lp.leftMargin = Ui.dp(this, 38);
+        line.setLayoutParams(lp);
+        return line;
+    }
+
+    /** null 安全取字符串：库里空字段读出来是 null，界面一律按空串处理。 */
+    private static String nz(String s) { return s == null ? "" : s; }
+
+    /**
      * 顶部统计摘要 —— 只讲待办：按优先级三行进度（圆点 + 数字 + 条），纵向排开。
+     * 整张卡可点，通往「全部待办」页（跨课程、按截止日期分段）。
      *
      * 课程数 / 笔记数挪到「我的课程」标题右边了：那两个数字是「有哪些东西」，
      * 和这里的「做得怎么样」不是一回事，挤在一行里谁也读不痛快。
-     * 没有待办时整张卡不出现（空卡片只会占地方）。
+     *
+     * 没有待办时这张卡**照样出现**（原来是不出现的）：它现在是通往全部待办页的唯一入口，
+     * 藏起来就等于那个页面没有入口。此时只显示「暂无待办」，不画那三行空进度条。
      */
     private View statsSummary() {
         int[] t = db.totals();
         int done = t[2], total = t[1];
-        if (total == 0) return null;
 
         LinearLayout card = Ui.column(this);
-        card.setBackground(Ui.round(this, Ui.surfaceContainer(this), Color.TRANSPARENT, Ui.R_M, 0));
+        card.setBackground(Ui.ripple(this, Ui.surfaceContainer(this), Ui.R_M));
         int ph = Ui.dp(this, 14), pv = Ui.v(this, 14);
         card.setPadding(ph, pv, ph, pv);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = Ui.v(this, 16);
         card.setLayoutParams(lp);
+        card.setClickable(true);
+        card.setFocusable(true);
+        card.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, AllTodosActivity.class));
+            }
+        });
 
         LinearLayout line = Ui.row(this);
-        line.addView(inlineNum(done + "/" + total));
-        line.addView(inlineLabel(" 待办完成"));
+        if (total == 0) {
+            line.addView(inlineLabel("暂无待办"));
+        } else {
+            line.addView(inlineNum(done + "/" + total));
+            line.addView(inlineLabel(" 待办完成"));
+        }
+        line.addView(Ui.spacer(this));
+        // 「全部」+ 右向箭头：让这张卡看起来可点（它确实可点——通往全部待办页）
+        line.addView(inlineLabel("全部"));
+        ImageView chevron = Icons.icon(this, R.drawable.ic_chevron_down,
+                Ui.onSurfaceVariant(this), 18);
+        chevron.setRotation(-90f);      // 下箭头转 90° 当右箭头用，省一个图标资源
+        LinearLayout.LayoutParams chp = new LinearLayout.LayoutParams(
+                Ui.dp(this, 18), Ui.dp(this, 18));
+        chp.leftMargin = Ui.dp(this, 4);
+        chevron.setLayoutParams(chp);
+        line.addView(chevron);
         card.addView(line);
 
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        bp.topMargin = Ui.v(this, 12);
-        View bars = Ui.priorityProgress(this, db.todoByPriority());
-        bars.setLayoutParams(bp);
-        card.addView(bars);
+        if (total > 0) {
+            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            bp.topMargin = Ui.v(this, 12);
+            View bars = Ui.priorityProgress(this, db.todoByPriority());
+            bars.setLayoutParams(bp);
+            card.addView(bars);
+        }
 
         return card;
     }
@@ -451,10 +613,11 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
     }
 
     /**
-     * 没有课程时的空状态。空状态要「教学」而不只是「暂无」——给一个能立刻做的动作，
-     * 而不是一句冷冰冰的提示。
+     * 空状态。空状态要「教学」而不只是「暂无」——给一个能立刻做的动作，
+     * 或者一条能立刻试的下一步，而不是一句冷冰冰的提示。
+     * 参数化是因为首页现在有两种空状态：一门课都没建，和搜索没有命中。
      */
-    private View emptyState() {
+    private View emptyState(int iconRes, String titleText, String hint) {
         LinearLayout box = Ui.column(this);
         box.setGravity(Gravity.CENTER);
         int ph = Ui.dp(this, 48), pv = Ui.v(this, 48);
@@ -463,17 +626,14 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         LinearLayout iconCircle = new LinearLayout(this);
         iconCircle.setGravity(Gravity.CENTER);
         iconCircle.setBackground(Ui.round(this, Ui.surfaceHigh(this), Color.TRANSPARENT, Ui.R_FULL, 0));
-        int s = Ui.dp(this, 88);
-        iconCircle.setLayoutParams(Ui.lp(s, s));
-        iconCircle.addView(Icons.icon(this, R.drawable.ic_folder, Ui.onSurfaceVariant(this), 40));
-
         LinearLayout.LayoutParams icp = new LinearLayout.LayoutParams(
                 Ui.dp(this, 88), Ui.dp(this, 88));
         icp.gravity = Gravity.CENTER;
         iconCircle.setLayoutParams(icp);
+        iconCircle.addView(Icons.icon(this, iconRes, Ui.onSurfaceVariant(this), 40));
         box.addView(iconCircle);
 
-        TextView title = Ui.text(this, "还没有课程", Ui.T_TITLE, Ui.onSurface(this), true);
+        TextView title = Ui.text(this, titleText, Ui.T_TITLE, Ui.onSurface(this), true);
         title.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -481,7 +641,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         title.setLayoutParams(tp);
         box.addView(title);
 
-        TextView sub = Ui.text(this, "点击右下角 + 新建第一门课程", Ui.T_BODY,
+        TextView sub = Ui.text(this, hint, Ui.T_BODY,
                 Ui.onSurfaceVariant(this), false);
         sub.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
@@ -580,17 +740,23 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
     }
 
     /**
-     * 删除课程前确认。文案里写明「连笔记和待办一起删且不可恢复」——
-     * 这是本 App 里唯一会连带删除用户数据的操作，必须说清楚代价。
+     * 删除课程前确认。文案里写明「连笔记和待办一起删」——这是本 App 里牵连最广的操作。
+     *
+     * 不再写「不可恢复」：现在删除是软删，进回收站（设置 → 回收站）可以整门恢复，
+     * 连它的笔记和待办一起回来。说「不可恢复」会让用户白白不敢用，或者删完以为没救了。
      */
     private void confirmDeleteCourse(final Db.Course c) {
         Dialogs.confirm(this, "删除课程",
-                "确定删除「" + c.name + "」及其所有笔记和待办？此操作不可恢复。",
+                "确定删除「" + c.name + "」及其所有笔记和待办？\n"
+                        + "删掉的内容会放进回收站，之后可以恢复。",
                 "删除", new Runnable() {
                     @Override public void run() {
+                        // 先撤这门课下所有待办的提醒，再标记删除：反过来先删的话，
+                        // 那些闹钟就成了指向已删除待办的孤儿，到点会弹一条空提醒
+                        Reminders.cancelCourse(MainActivity.this, c.id);
                         db.deleteCourse(c.id);
                         refresh();
-                        Tip.success(MainActivity.this, "课程已删除");
+                        Tip.success(MainActivity.this, "课程已移入回收站");
                     }
                 });
     }

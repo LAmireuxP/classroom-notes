@@ -447,6 +447,19 @@ public final class Ui {
         return tv;
     }
 
+    /**
+     * 列表里的一行摘要：去掉首尾空白、超过 max 字就截断加省略号。
+     * 不做「按词边界截断」——中文没有词边界，硬截加省略号反而是最自然的做法。
+     * 放在这里是因为首页（搜索结果）和课程页（笔记列表）要用同一套截断规则，
+     * 两边各写一份迟早会漂成两个长度。
+     */
+    public static String preview(String text, int max) {
+        if (text == null) return "";
+        String t = text.trim();
+        if (t.length() <= max) return t;
+        return t.substring(0, max) + "…";
+    }
+
         // ================= 容器 =================
 
     /**

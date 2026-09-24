@@ -37,6 +37,8 @@ import java.util.List;
 public class CourseActivity extends Activity implements Dialogs.DialogHost {
 
     private static final int REQ_MIC = 201;
+    /** API 33+ 的通知权限申请码。和麦克风分开，回调里才能分辨是哪一项被拒。 */
+    private static final int REQ_NOTIF = 202;
 
     private Db db;
     private String courseId;
@@ -47,10 +49,14 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     private LinearLayout recPanel;
     /** 页面根容器。加载条挂在这里而不是 content 上——content 会被 renderContent() 反复清空重建。 */
     private LinearLayout pageRoot;
+    /** 正文滚动容器。从首页搜索结果跳进来时要把那条笔记滚到眼前。 */
+    private ScrollView scroller;
 
     private String tab = "notes";
     private String query = "";
     private String expandedNoteId = null;
+    /** 从首页搜索结果跳进来时，要展开并滚到眼前的那条笔记；滚过一次就清掉。 */
+    private String focusNoteId;
     private AlertDialog submitDialog;
     /** 厂商授权引导框正开着——同一次录音里连续报错只弹一次。 */
     private boolean consentGuideShowing;
@@ -92,6 +98,12 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         courseId = getIntent().getStringExtra("courseId");
         course = db.course(courseId);
         if (course == null) { finish(); return; }
+        // 从首页搜索结果点进来会带 noteId：直接把那条展开，用户不用在列表里再找一遍
+        focusNoteId = getIntent().getStringExtra("noteId");
+        if (focusNoteId != null) expandedNoteId = focusNoteId;
+        // 提醒通知 / 全部待办页会带 tab=todos，落在待办页签上而不是默认的笔记
+        String wantTab = getIntent().getStringExtra("tab");
+        if ("todos".equals(wantTab)) tab = "todos";
         applyWindowTheme();
         buildUi();
     }
@@ -218,6 +230,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
         sv.setLayoutParams(sp);
+        scroller = sv;
 
         LinearLayout body = Ui.column(this);
         int bp = Ui.dp(this, 16);
@@ -462,7 +475,79 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                     query.length() > 0 ? "试试换个关键词" : "点右下角加号写下课堂要点"));
             return;
         }
-        for (Db.Note n : notes) content.addView(noteRow(n));
+        View focus = null;
+        for (Db.Note n : notes) {
+            View rv = noteRow(n);
+            content.addView(rv);
+            if (n.id.equals(focusNoteId)) focus = rv;
+        }
+        scrollToRow(focus);
+    }
+
+    /**
+     * 把某一行滚到可视区顶部（从首页搜索结果跳进来时用）。
+     *
+     * 为什么不在 renderNotes 里直接 scrollTo：那一刻视图还没测量过，所有 getTop()
+     * 都还是 0，算出来必然是 0——表现就是「完全没滚」。所以挂一个 preDraw 回调，
+     * 等布局完成再算。onPreDraw 一定发生在布局之后、绘制之前，是拿得到真实坐标的最早时机
+     * （post() 不行：它排出去的任务很可能还在首次布局之前）。
+     *
+     * 三个坑，都是真机实测踩出来的：
+     *
+     *  1. getTop() 是相对**各自父容器**的。要逐级累加到 ScrollView 的直接子节点为止，
+     *     只取行自己的 getTop() 会漏掉 TabBar 与搜索框那一段高度，停在错的位置。
+     *
+     *  2. 视图已挂载时 getViewTreeObserver() 返回的是**整个窗口共享**的那一个观察者，
+     *     回调会在每帧绘制前都来一次；而 onResume() 又会重建一次列表、再注册一个。
+     *     不设「只生效一次」的闸，残留回调就会反复触发滚动动画，用户手动滚动会被
+     *     一直拽回来。所以每个回调自带一次性开关，并且确认自己那一行还在树上才动手
+     *     （被重建掉的那一份坐标已经作废，交给新视图去做）。
+     *
+     *  3. focusNoteId 要等到真滚了才清：onResume() 那次重建会把这一行换成新视图，
+     *     清早了新视图就认不出该滚哪一行，而旧视图上的回调也没机会执行，最终谁都不滚。
+     */
+    private void scrollToRow(final View target) {
+        if (target == null || scroller == null) return;
+        final boolean[] done = new boolean[1];
+        target.getViewTreeObserver().addOnPreDrawListener(
+                new android.view.ViewTreeObserver.OnPreDrawListener() {
+            @Override public boolean onPreDraw() {
+                if (done[0]) return true;          // 本回调只生效一次
+                done[0] = true;
+                try {
+                    target.getViewTreeObserver().removeOnPreDrawListener(this);
+                } catch (Throwable ignored) { /* 摘不掉也不影响下面的判断 */ }
+
+                View body = scroller.getChildAt(0);
+                // 这一行已经被 onResume 那次重建换掉了：坐标作废，让新视图去滚
+                if (body == null || !isDescendant(target, body)) return true;
+                if (focusNoteId == null) return true;   // 已经滚过了
+
+                int y = 0;
+                View v = target;
+                while (v != null && v != body) {
+                    y += v.getTop();
+                    android.view.ViewParent p = v.getParent();
+                    v = (p instanceof View) ? (View) p : null;
+                }
+                focusNoteId = null;
+                // 目标靠近列表末尾时，内容高度不够，ScrollView 会自动钳到最大滚动量，
+                // 这一行落在视口中下部而不是顶端——这是正常的，不是算错了。
+                scroller.smoothScrollTo(0, Math.max(0, y - Ui.dp(CourseActivity.this, 8)));
+                return true;      // true = 继续这次绘制，不要拦
+            }
+        });
+    }
+
+    /** target 是否还挂在 root 这棵子树上（行被重建后，旧引用就不在树上了）。 */
+    private static boolean isDescendant(View target, View root) {
+        View v = target;
+        while (v != null) {
+            if (v == root) return true;
+            android.view.ViewParent p = v.getParent();
+            v = (p instanceof View) ? (View) p : null;
+        }
+        return false;
     }
 
     /**
@@ -624,27 +709,28 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     }
 
         private void confirmDeleteNote(final Db.Note n) {
-        Dialogs.confirm(this, "删除笔记", "确定删除「" + nz(n.title) + "」？此操作不可恢复。",
+        // 不写「不可恢复」：删除是软删，进回收站可以恢复。
+        // 提示语里点明去哪恢复——用户最需要「我刚才删错了」的答案就在这一句里。
+        Dialogs.confirm(this, "删除笔记", "确定删除「" + nz(n.title) + "」？\n"
+                        + "删掉的笔记会放进回收站，之后可以恢复。",
                 "删除", new Runnable() {
                     @Override public void run() {
                         db.deleteNote(n.id);
                         if (n.id.equals(expandedNoteId)) expandedNoteId = null;
                         renderTabs();
                         renderContent();
-                        Tip.success(CourseActivity.this, "笔记已删除");
+                        Tip.success(CourseActivity.this,
+                                "笔记已移入回收站（设置 → 回收站 可恢复）");
                     }
                 });
     }
 
     /**
      * 列表里的一行摘要：压掉换行、截到 90 字。
-     * 不做「按词边界截断」——中文没有词边界，硬截加省略号反而是最自然的做法。
+     * 截断规则本体在 Ui.preview —— 首页搜索结果也用同一套，免得两处长度漂开。
      */
     private String preview(String text) {
-        if (text == null) return "";
-        String t = text.trim();
-        if (t.length() <= 90) return t;
-        return t.substring(0, 90) + "…";
+        return Ui.preview(text, 90);
     }
 
     // ================== 待办 ==================
@@ -733,6 +819,9 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         checkBox.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 db.setTodoCompleted(t.id, !t.completed);
+                // 勾掉就不该再提醒：不撤的话到点还会弹一条已经做完的任务。
+                // 取消勾选不重排——原来的提醒时刻多半已经过去了，重排只会立刻响一声。
+                if (!t.completed) Reminders.cancel(CourseActivity.this, t.id);
                 renderTabs();
                 renderContent();
                 if (!t.completed) Tip.success(CourseActivity.this, "已完成");
@@ -752,6 +841,9 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
 
         String sub = priorityLabel(t.priority);
         if (t.due != null && t.due.length() > 0) sub += " · 截止 " + Dates.shortDate(t.due);
+        // 提醒时刻也写进副标题：设过提醒的待办要一眼能看出来，
+        // 否则用户不确定「到底设上了没有」，只能再点开表单确认。
+        if (t.remindAt > 0) sub += " · 提醒 " + Dates.stamp(t.remindAt);
         TextView subTv = Ui.text(this, sub, Ui.T_LABEL, Ui.onSurfaceVariant(this), false);
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -764,9 +856,10 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         del.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 db.deleteTodo(t.id);
+                Reminders.cancel(CourseActivity.this, t.id);   // 删了就别再提醒
                 renderTabs();
                 renderContent();
-                Tip.success(CourseActivity.this, "待办已删除");
+                Tip.success(CourseActivity.this, "待办已移入回收站");
             }
         });
         row.addView(del);
@@ -882,12 +975,14 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         String title = "";
         String due = Dates.today();
         String priority = "medium";
+        /** 提醒时间（epoch 毫秒）。0 = 不提醒。 */
+        long remindAt;
         EditText titleField;
         EditText dueField;
     }
 
     /**
-     * 重建待办表单。点优先级会走到这里，所以先把输入框里的值收回 TodoForm 再重画，
+     * 重建待办表单。点优先级、改提醒都会走到这里，所以先把输入框里的值收回 TodoForm 再重画，
      * 否则用户刚敲的任务内容会被「重建」清掉。
      */
     private void renderTodoForm(final LinearLayout box, final TodoForm f) {
@@ -911,6 +1006,86 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                         renderTodoForm(box, f);
                     }
                 }));
+
+        formLabel(box, "提醒");
+        box.addView(remindRow(box, f));
+    }
+
+    /**
+     * 提醒行：没设时是「不提醒（点这里设一个）」，设了就显示时刻、右侧多一个清除按钮。
+     *
+     * 用系统自带的日期 / 时间选择器而不是让用户手输：日期时间格式太多写法，
+     * 手输写错要么被当成无效值、要么落到一个意想不到的时刻上，选择器不会有这种歧义。
+     */
+    private View remindRow(final LinearLayout box, final TodoForm f) {
+        LinearLayout row = Ui.row(this);
+        int ph = Ui.dp(this, 14), pv = Ui.v(this, 11);
+        row.setPadding(ph, pv, ph, pv);
+        row.setMinimumHeight(Ui.vMin(this, 48));
+        row.setBackground(Ui.ripple(this, Ui.surfaceContainer(this), Ui.R_S));
+        row.setClickable(true);
+        row.setFocusable(true);
+
+        TextView tv = Ui.text(this,
+                f.remindAt > 0 ? "提醒时间　" + Dates.stamp(f.remindAt) : "不提醒（点这里设一个）",
+                Ui.T_BODY + 1,
+                f.remindAt > 0 ? Ui.onSurface(this) : Ui.onSurfaceVariant(this), false);
+        tv.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(tv);
+
+        if (f.remindAt > 0) {
+            LinearLayout clear = Icons.iconButton(this, R.drawable.ic_close, 36, Ui.outline(this));
+            clear.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    f.remindAt = 0;
+                    renderTodoForm(box, f);
+                }
+            });
+            row.addView(clear);
+        }
+
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { pickRemind(box, f); }
+        });
+        return row;
+    }
+
+    /**
+     * 先选日期、再选时间（两个系统对话框串起来）。
+     * 默认值：已经设过就从原值开始改；没设过用「现在往后一小时」——
+     * 提醒总是设给未来的事，从当前这一刻开始调很容易一不小心设成过去。
+     */
+    private void pickRemind(final LinearLayout box, final TodoForm f) {
+        long base = f.remindAt > 0 ? f.remindAt : System.currentTimeMillis() + 3600000L;
+        final int[] p = new int[5];
+        Dates.split(base, p);
+        new android.app.DatePickerDialog(this,
+                new android.app.DatePickerDialog.OnDateSetListener() {
+                    @Override public void onDateSet(android.widget.DatePicker dp,
+                                                    final int y, final int m, final int d) {
+                        new android.app.TimePickerDialog(CourseActivity.this,
+                                new android.app.TimePickerDialog.OnTimeSetListener() {
+                                    @Override public void onTimeSet(android.widget.TimePicker tp,
+                                                                    int hh, int mm) {
+                                        f.remindAt = Dates.at(y, m, d, hh, mm);
+                                        if (f.remindAt > System.currentTimeMillis()) {
+                                            ensureNotifyPermission();
+                                        }
+                                        renderTodoForm(box, f);
+                                    }
+                                }, p[3], p[4], true).show();
+                    }
+                }, p[0], p[1], p[2]).show();
+    }
+
+    /**
+     * API 33+ 要用户点头才发得出通知。放在「刚设完一个未来的提醒」这一刻问最合理：
+     * 用户此刻清楚这个权限是干什么用的；反过来，一进 App 就弹权限框会被当成骚扰。
+     */
+    private void ensureNotifyPermission() {
+        if (Build.VERSION.SDK_INT < 33) return;
+        if (Reminders.canNotify(this)) return;
+        requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, REQ_NOTIF);
     }
 
     /** 对话框里的字段标签。 */
@@ -949,11 +1124,20 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         todo.title = title;
         todo.due = f.dueField.getText().toString().trim();
         todo.priority = f.priority;
+        todo.remindAt = f.remindAt;
         db.saveTodo(todo);
+        // 存完立刻排闹钟。等回到前台再排的话，用户设完马上杀进程或重启，
+        // 这一刻的提醒就丢了（闹钟本身也不跨重启，但没排过就更谈不上重排）。
+        Reminders.schedule(this, todo);
         submitDialog = null;
         renderTabs();
         renderContent();
-        Tip.success(this, "待办已创建");
+        if (f.remindAt > 0 && f.remindAt <= System.currentTimeMillis()) {
+            // 存是照存，但必须说清楚：否则用户以为设上了，到点什么都不会发生
+            Tip.error(this, "已创建，但提醒时间已过，不会提醒");
+        } else {
+            Tip.success(this, "待办已创建");
+        }
         return true;
     }
 
@@ -985,6 +1169,11 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
             } else {
                 Tip.error(this, "未获得麦克风权限，无法录音");
             }
+        } else if (req == REQ_NOTIF) {
+            // 提醒本身已经存下了（闹钟排得进去），只是发不出通知。说清这一点，
+            // 别让用户以为「提醒没设上」而反复重设。
+            boolean ok = results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED;
+            if (!ok) Tip.error(this, "未允许通知，提醒到点不会弹出；可在系统设置里再开");
         }
     }
 

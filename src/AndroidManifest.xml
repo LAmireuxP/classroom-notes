@@ -1,14 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.lamireuxp.classroom"
-    android:versionCode="8"
-    android:versionName="1.3">
+    android:versionCode="10"
+    android:versionName="1.4">
 
     <uses-sdk android:minSdkVersion="22" android:targetSdkVersion="33" />
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- 待办提醒：到点发通知。API 33 起是运行时权限，在设置提醒那一刻申请 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 闹钟不跨重启，开机后必须重排一遍，否则所有提醒静默失效 -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!--
       targetSdk >= 30 会启用包可见性过滤：不声明下面这条，
@@ -76,6 +80,22 @@
             android:exported="false" />
 
         <activity
+            android:name=".AllTodosActivity"
+            android:label="全部待办"
+            android:parentActivityName=".MainActivity"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode"
+            android:exported="false" />
+
+        <activity
+            android:name=".TrashActivity"
+            android:label="回收站"
+            android:parentActivityName=".SettingsActivity"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode"
+            android:exported="false" />
+
+        <activity
             android:name=".SettingsActivity"
             android:label="设置"
             android:parentActivityName=".MainActivity"
@@ -100,5 +120,25 @@
             android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode"
             android:exported="false" />
+
+        <!--
+          提醒闹钟的落点。exported=false 足够：PendingIntent 由本应用自己创建，
+          系统按身份投递，不需要对外暴露。
+        -->
+        <receiver
+            android:name=".ReminderReceiver"
+            android:exported="false" />
+
+        <!--
+          开机重排。BOOT_COMPLETED 是系统受保护广播，必须 exported=true 才收得到；
+          因为发不出这个广播，第三方无法伪造触发。
+        -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

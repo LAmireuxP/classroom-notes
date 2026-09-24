@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="432" height="432" viewBox="0 0 432 432" fill="none">
+  <defs>
+    <linearGradient id="g" x1="110" y1="70" x2="400" y2="460" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4F7DF7"/>
+      <stop offset="0.52" stop-color="#9A6BEE"/>
+      <stop offset="1" stop-color="#FF6FA8"/>
+    </linearGradient>
+  </defs>
+  <!-- 自适应图标前景层: 透明底, 主体缩进安全区 -->
+  <g transform="translate(216,216) scale(0.54) translate(-256,-243)">
+    <g stroke="url(#g)" stroke-linecap="round" stroke-linejoin="round" fill="none">
+      <path d="M238 234 C226 198 208 178 202 128" stroke-width="22"/>
+      <path d="M220 196 C200 192 176 188 156 170" stroke-width="18"/>
+      <path d="M204 150 C192 134 184 112 186 90" stroke-width="18"/>
+      <path d="M274 234 C286 198 304 178 310 128" stroke-width="22"/>
+      <path d="M292 196 C312 192 336 188 356 170" stroke-width="18"/>
+      <path d="M308 150 C320 134 328 112 326 90" stroke-width="18"/>
+      <path d="M172 262 C155 292 155 330 172 360" stroke-width="16"/>
+      <path d="M148 250 C126 292 126 330 148 372" stroke-width="11" opacity="0.7"/>
+      <path d="M340 262 C357 292 357 330 340 360" stroke-width="16"/>
+      <path d="M364 250 C386 292 386 330 364 372" stroke-width="11" opacity="0.7"/>
+    </g>
+    <rect x="226" y="228" width="60" height="118" rx="30" stroke="url(#g)" stroke-width="22" fill="#FFFFFF"/>
+    <path d="M206 292 Q206 356 256 356 Q306 356 306 292" stroke="url(#g)" stroke-width="22" stroke-linecap="round" fill="none"/>
+    <g stroke="url(#g)" stroke-linecap="round" fill="none">
+      <line x1="256" y1="356" x2="256" y2="378" stroke-width="22"/>
+      <line x1="230" y1="386" x2="282" y2="386" stroke-width="26"/>
+    </g>
+  </g>
+</svg>

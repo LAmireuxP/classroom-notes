@@ -5,3 +5,15 @@ app-v2/*.apk
 *.idsig
 # 放 API Key 的便签文件：这个仓库是公开的，绝不能提交进去
 api.txt
+
+# 图标备份（替换图标期间保留，可直接删）
+icon-backup-original/
+
+# 图标方案评审用的对照图（可删）
+icon-review/
+
+# Python 缓存
+__pycache__/
+
+# 编辑器/工具本地配置（不属于项目内容）
+.zcodeignore
