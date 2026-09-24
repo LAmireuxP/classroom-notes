@@ -22,7 +22,10 @@ if ! command -v "$KEYTOOL" >/dev/null 2>&1; then
     if [ -x "$c" ]; then KEYTOOL="$c"; break; fi
   done
 fi
-VER=1.3
+# 版本号只在这里改一处，产物文件名（课堂笔记-v$VER.apk）跟着它走。
+# 注意它和 src/AndroidManifest.xml 里的 versionName 是**两个地方**，发版时两处都要改——
+# 漏改 manifest 会出现「APK 文件名叫 1.4、装上去显示 1.3」。
+VER=1.4
 
 cd "$(dirname "$0")"
 rm -rf build && mkdir -p build/classes build/gen build/dex
@@ -37,8 +40,12 @@ echo "=== [2/6] aapt2 link ==="
 
 echo "=== [3/6] javac ==="
 find src/java build/gen -name '*.java' > build/sources.txt
+# 不要吞掉 javac 的 stderr。这里原来写的是 `2>/dev/null`，本意是挡掉
+# 「某些输入文件使用了过时的 API」这类无害提示，代价却是编译错误也一起没了——
+# 脚本只留下一句退出码 1，报错信息一个字都看不到，只能手工照着这行命令重跑一遍。
+# 宁可多看两行提示，也不能在出错时什么都不给。set -e 会让失败正常中断构建。
 javac -encoding UTF-8 -source 1.8 -target 1.8 -bootclasspath "$AJ" \
-  -classpath "$AJ" -d build/classes @build/sources.txt 2>/dev/null
+  -classpath "$AJ" -d build/classes @build/sources.txt
 
 echo "=== [4/6] d8 ==="
 # 先把 class 打成一个 jar 再交给 d8。逐个文件当参数传，class 一多就会撞上
