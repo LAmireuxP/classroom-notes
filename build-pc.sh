@@ -25,7 +25,7 @@ fi
 # 版本号只在这里改一处，产物文件名（课堂笔记-v$VER.apk）跟着它走。
 # 注意它和 src/AndroidManifest.xml 里的 versionName 是**两个地方**，发版时两处都要改——
 # 漏改 manifest 会出现「APK 文件名叫 1.4、装上去显示 1.3」。
-VER=1.4
+VER=1.5
 
 cd "$(dirname "$0")"
 rm -rf build && mkdir -p build/classes build/gen build/dex

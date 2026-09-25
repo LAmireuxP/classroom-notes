@@ -1,7 +1,7 @@
 # 课堂笔记 · Android 原生版
 
-课程笔记、待办、语音转写、AI 总结。纯原生 Java 实现，零第三方依赖，APK 约 156 KB。
-当前版本 **1.4**。
+课程笔记、待办、语音转写、AI 总结。纯原生 Java 实现，零第三方依赖，APK 约 159 KB。
+当前版本 **1.5**。
 
 ## 参考与致谢
 
@@ -19,7 +19,7 @@ WebView 方案，几项核心能力在 WebView 里无法工作（`webkitSpeechRe
 | 数据存储 | localStorage（JSON 整存整取） | SQLite（增量读写 + 索引） |
 | 语音识别 / 录音 | Web Speech API，WebView 不支持 | 系统 SpeechRecognizer + 原生 MediaRecorder |
 | 导入导出 | `a.download`，WebView 里点不动 | SAF 系统文件选择器 |
-| APK 体积 | 3.7 MB | 约 156 KB |
+| APK 体积 | 3.7 MB | 约 159 KB |
 
 后续的功能迭代与问题修复（云转写上传的 MIME 修正、Windows 构建脚本 `build-pc.sh`、语音识别
 兼容、设置页重构等）见下方「更新日志」。
@@ -48,7 +48,7 @@ WebView 方案，几项核心能力在 WebView 里无法工作（`webkitSpeechRe
 
 ## 下载
 
-- 应用（国内可直连）：https://lamireuxp.github.io/classroom-notes/dist/classroom-1.4.apk
+- 应用（国内可直连）：https://lamireuxp.github.io/classroom-notes/dist/classroom-1.5.apk
 - 发布页：https://github.com/LAmireuxP/classroom-notes/releases
 
 从 1.0 起各版本签名一致，可直接覆盖升级，笔记数据不会丢。
@@ -139,6 +139,32 @@ App 里的对应行为：
 - `Dates` / `Id` / `Extract`：日期、ID 生成、本地关键词提取（AI 不可用时的兜底）
 
 ## 更新日志
+
+### 1.5
+
+- **笔记与待办支持长按拖动排序**：长按某一行拿起来——那一行变成一张**带阴影的浮动卡片
+  跟着手指走**，原行就地隐藏、列表实时收拢让位；拖过哪一行，其余行就滑开让出位置
+  （160ms 的过渡）；松手即落位，**不重绘**（视觉顺序已经是最终顺序，所以没有跳变）。
+  拖到列表上下边缘会自动滚动，否则长列表里根本拖不到远处。排序落在数据库的 `sort`
+  字段上，退出重进、换设备都还在。
+  第一版是「被拖的行压暗待在原地、落点描个高亮」——能用但一点也不丝滑：手指带着一整行
+  系统影子、列表纹丝不动、松手整页重绘，三件事叠起来就是「拖着一个色块，松手咣当一下」。
+  这一版改成上面那样，三个要点：
+  **① 起拖瞬间先截图再隐藏**——GONE 的视图 draw 出来是空白，顺序反了影子就是空的；
+  **② 只在拖动期间挂 LayoutTransition**——它会让容器里所有子 View 的增删都带动画，
+  一直挂着的话正常重绘也会慢半拍；
+  **③ 松手不重绘**——隐藏的那一行就是空档，列表的视觉顺序已经是最终顺序。
+  几处其它的取舍：
+  **① 只在同组内可拖**——笔记的「置顶 / 未置顶」、待办的「进行中 / 已完成」各自成组。
+  列表排序是「分组字段 DESC, sort ASC」，跨组改 sort 不会改变实际位置，用户只会看到那一行
+  「弹回去」，比直接不许拖更让人困惑，所以跨组不给高亮、也不生效。
+  **② 搜索过滤时关闭拖动**：列表只剩匹配项，重排会把没显示出来的条目的 sort 写乱。
+  **③ 新条目仍然出现在最上方**（拿当前最小 sort 减一），保住加拖动之前的行为——
+  否则长列表里新建完还得往下翻去找它。没拖过的老数据 sort 全是 0，回退到 `created DESC`，
+  所以升级后顺序完全不变。
+  实现上没有引入任何依赖：`ItemTouchHelper` 属于 androidx.recyclerview，引进来会同时破坏
+  「零第三方依赖」和当前「直接对着 android.jar 编译、不走 Gradle」的构建方式，
+  所以用框架自带的 `startDragAndDrop` + `OnDragListener` 自己实现（见 `DragSort.java`）。
 
 ### 1.4
 
