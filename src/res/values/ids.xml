@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  仅用于 View.setTag(int, Object) 的键。Android 要求这种键是资源 id，
+  所以哪怕只是给拖动排序临时存一下原背景，也得在这里声明一个。
+-->
+<resources>
+    <item name="dragsort_bg" type="id" />
+</resources>

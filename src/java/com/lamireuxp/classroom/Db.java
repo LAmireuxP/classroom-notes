@@ -330,7 +330,9 @@ public class Db extends SQLiteOpenHelper {
             args.add("%" + query + "%");
             args.add("%" + query + "%");
         }
-        sql += " ORDER BY pinned DESC, created DESC";
+        // sort 优先：用户拖动排序后，顺序完全由 sort 决定；没拖过的老数据 sort 全是 0，
+        // 回退到 created DESC（即原来的顺序），所以升级后顺序不变。
+        sql += " ORDER BY pinned DESC, sort ASC, created DESC";
         Cursor c = getReadableDatabase().rawQuery(sql, args.toArray(new String[0]));
         try {
             while (c.moveToNext()) list.add(readNote(c));
@@ -421,6 +423,10 @@ public class Db extends SQLiteOpenHelper {
         int rows = getWritableDatabase().update("notes", v, "id=?", new String[]{n.id});
         if (rows == 0) {
             v.put("created", n.created == 0 ? System.currentTimeMillis() : n.created);
+            // 新笔记插到最前，保住「新建的记在最上面」这个原有行为（见 topSort 的说明）。
+            // 不显式设 sort 的话它默认 0，在用户拖动排序后排序值已有 0..N 的情况下，
+            // 新笔记会凭 0 插到中间某个位置。
+            v.put("sort", topSort("notes", "course_id=? AND deleted_at=0", n.courseId));
             getWritableDatabase().insert("notes", null, v);
         }
     }
@@ -430,6 +436,27 @@ public class Db extends SQLiteOpenHelper {
         ContentValues v = new ContentValues();
         v.put("pinned", pinned ? 1 : 0);
         getWritableDatabase().update("notes", v, "id=?", new String[]{id});
+    }
+
+    /**
+     * 重排笔记：传入**完整的新顺序**（id 列表），把 sort 写成 0..N-1。
+     * 调用方保证 ids 只含当前课程的、未删的笔记——从渲染列表里来，不会有脏数据。
+     * 置顶/未置顶的相对位置由列表本身决定（排序是 pinned DESC, sort ASC，
+     * pinned 的 sort 是 0..k、未置顶是 k+1..N，各自组内顺序都对）。
+     */
+    public void reorderNotes(List<String> ids) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            for (int i = 0; i < ids.size(); i++) {
+                ContentValues v = new ContentValues();
+                v.put("sort", i);
+                db.update("notes", v, "id=?", new String[]{ids.get(i)});
+            }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
     }
 
     /** 删除单条笔记：进回收站（可恢复），不是真删。 */
@@ -453,7 +480,7 @@ public class Db extends SQLiteOpenHelper {
         List<Todo> list = new ArrayList<Todo>();
         Cursor c = getReadableDatabase().rawQuery(
                 "SELECT id,course_id,title,due,priority,completed,created,remind_at FROM todos " +
-                        "WHERE course_id=? AND deleted_at=0 ORDER BY completed ASC, created DESC",
+                        "WHERE course_id=? AND deleted_at=0 ORDER BY completed ASC, sort ASC, created DESC",
                 new String[]{courseId});
         try {
             while (c.moveToNext()) list.add(readTodo(c));
@@ -557,7 +584,48 @@ public class Db extends SQLiteOpenHelper {
         int rows = getWritableDatabase().update("todos", v, "id=?", new String[]{t.id});
         if (rows == 0) {
             v.put("created", t.created == 0 ? System.currentTimeMillis() : t.created);
+            // 新待办插到最前，理由同 saveNote
+            v.put("sort", topSort("todos", "course_id=? AND deleted_at=0", t.courseId));
             getWritableDatabase().insert("todos", null, v);
+        }
+    }
+
+    /**
+     * 重排待办：传入完整的新顺序（id 列表），把 sort 写成 0..N-1。
+     * 「进行中 / 已完成」的分组由 ORDER BY completed ASC 决定，两组各自组内顺序按 sort。
+     */
+    public void reorderTodos(List<String> ids) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            for (int i = 0; i < ids.size(); i++) {
+                ContentValues v = new ContentValues();
+                v.put("sort", i);
+                db.update("todos", v, "id=?", new String[]{ids.get(i)});
+            }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    /**
+     * 某个分组里「排在最前」可用的 sort：当前最小值 -1。
+     *
+     * 为什么是往前插而不是往后追加：加拖动排序之前，列表是 `created DESC`——**新建的
+     * 记在最上面**。这是用户已经习惯的行为，不该因为加了拖动就悄悄改成「新条目掉到末尾」
+     * （长列表里新建完还得往下翻去找）。往前插保住原行为，同时顺序仍然完全可拖。
+     * 取负值不影响正确性：拖动一次会把 sort 重写成 0..N-1。
+     * 表名与条件只由本类内的字面量传入，不接受外部拼接。
+     */
+    private long topSort(String table, String where, String courseId) {
+        Cursor c = getReadableDatabase().rawQuery(
+                "SELECT IFNULL(MIN(sort), 1) - 1 FROM " + table + " WHERE " + where,
+                new String[]{courseId});
+        try {
+            return c.moveToNext() ? c.getLong(0) : 0;
+        } finally {
+            c.close();
         }
     }
 

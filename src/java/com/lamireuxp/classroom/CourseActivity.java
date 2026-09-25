@@ -22,6 +22,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -459,10 +460,15 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         content.addView(actions);
 
         List<Db.Note> notes = db.notes(courseId, query.length() > 0 ? query : null);
+        // 搜索过滤中不允许拖动排序：列表只剩匹配项，重排会把**没显示出来的**笔记的 sort
+        // 写成一段孤立的值，与剩下的交错在一起，顺序就乱了。所以只在完整列表上开拖动。
+        final boolean canDrag = query.length() == 0;
 
         // 计数摘要
-        TextView count = Ui.text(this, "共 " + notes.size() + " 条笔记", Ui.T_LABEL,
-                Ui.onSurfaceVariant(this), false);
+        TextView count = Ui.text(this, canDrag
+                        ? "共 " + notes.size() + " 条笔记 · 长按可拖动排序"
+                        : "共 " + notes.size() + " 条笔记",
+                Ui.T_LABEL, Ui.onSurfaceVariant(this), false);
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         clp.bottomMargin = Ui.v(this, 10);
@@ -475,13 +481,34 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                     query.length() > 0 ? "试试换个关键词" : "点右下角加号写下课堂要点"));
             return;
         }
+        List<View> rows = new ArrayList<View>();
+        List<String> ids = new ArrayList<String>();
+        List<String> sections = new ArrayList<String>();
         View focus = null;
         for (Db.Note n : notes) {
             View rv = noteRow(n);
             content.addView(rv);
+            rows.add(rv);
+            ids.add(n.id);
+            // 置顶与未置顶各自成组，组内才能互相拖（见 DragSort 的说明）
+            sections.add(n.pinned ? "1" : "0");
             if (n.id.equals(focusNoteId)) focus = rv;
         }
         scrollToRow(focus);
+
+        if (canDrag) {
+            DragSort.enable(this, content, scroller, rows, ids, sections,
+                    new DragSort.Callback() {
+                        @Override public void onDrop(List<String> newOrder) {
+                            db.reorderNotes(newOrder);
+                            renderContent();      // 视觉顺序已是最终顺序，重绘只为同步状态
+                        }
+
+                        @Override public void onDragEnded(boolean dropped) {
+                            if (!dropped) renderContent();   // 拖到外面松手：复原列表
+                        }
+                    });
+        }
     }
 
     /**
@@ -733,8 +760,6 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         return Ui.preview(text, 90);
     }
 
-    // ================== 待办 ==================
-
     private void renderTodos() {
         List<Db.Todo> todos = db.todos(courseId);
         if (todos.isEmpty()) {
@@ -745,7 +770,8 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
 
         int open = 0;
         for (Db.Todo t : todos) if (!t.completed) open++;
-        TextView summary = Ui.text(this, open + " 项未完成 · 共 " + todos.size() + " 项",
+        TextView summary = Ui.text(this, open + " 项未完成 · 共 " + todos.size()
+                        + " 项 · 长按可拖动排序",
                 Ui.T_LABEL, Ui.onSurfaceVariant(this), false);
         LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -763,6 +789,9 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         content.addView(progress);
 
         boolean headerTodo = false, headerDone = false;
+        List<View> rows = new ArrayList<View>();
+        List<String> ids = new ArrayList<String>();
+        List<String> sections = new ArrayList<String>();
         for (Db.Todo t : todos) {
             if (!t.completed && !headerTodo) {
                 headerTodo = true;
@@ -771,8 +800,24 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                 headerDone = true;
                 content.addView(sectionLabel("已完成"));
             }
-            content.addView(todoRow(t));
+            View rv = todoRow(t);
+            content.addView(rv);
+            rows.add(rv);
+            ids.add(t.id);
+            // 进行中与已完成各自成组，组内才能互相拖
+            sections.add(t.completed ? "1" : "0");
         }
+        DragSort.enable(this, content, scroller, rows, ids, sections,
+                new DragSort.Callback() {
+                    @Override public void onDrop(List<String> newOrder) {
+                        db.reorderTodos(newOrder);
+                        renderContent();
+                    }
+
+                    @Override public void onDragEnded(boolean dropped) {
+                        if (!dropped) renderContent();
+                    }
+                });
     }
 
     /** 分组小标题（「进行中」/「已完成」），比正文小一号、带上下间距。 */
