@@ -328,23 +328,16 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
             return;
         }
 
-        // 章节标题
+        // 章节标题 + 计数。课程数与笔记数是同一种「有哪些东西」的元信息，用同一种
+        // 样式：一段无底的弱化文字。原先课程数套了 tonal 药丸、笔记数是裸文字，
+        // 并排在一起一个有底一个没底，看起来像两种东西（用户指出的不统一）。
         LinearLayout secHead = Ui.row(this);
         TextView secTitle = Ui.text(this, "我的课程", Ui.T_TITLE, Ui.onSurface(this), true);
         secHead.addView(secTitle);
         secHead.addView(Ui.spacer(this));
-        TextView secCount = Ui.tonalChip(this, courses.size() + " 门",
-                Ui.secondaryContainer(this), Ui.tone(this, "on_secondary_container"));
-        secHead.addView(secCount);
-
-        // 笔记数跟课程数并排（原来在顶部统计卡里，那里现在只讲待办进度）
-        TextView noteCount = Ui.text(this, "· " + db.totals()[0] + " 条笔记",
+        TextView count = Ui.text(this, courses.size() + " 门 · " + db.totals()[0] + " 条笔记",
                 Ui.T_LABEL, Ui.onSurfaceVariant(this), false);
-        LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        nlp.leftMargin = Ui.dp(this, 8);
-        noteCount.setLayoutParams(nlp);
-        secHead.addView(noteCount);
+        secHead.addView(count);
         LinearLayout.LayoutParams shp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         shp.topMargin = Ui.v(this, 4);

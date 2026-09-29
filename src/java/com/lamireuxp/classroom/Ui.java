@@ -682,18 +682,6 @@ public final class Ui {
         return (EditText) box.getTag();
     }
 
-    // ================= 芯片 Chip =================
-
-        /** 带容器色的 Chip */
-    public static TextView tonalChip(Context c, String text, int containerColor, int onColor) {
-        TextView tv = text(c, text, T_LABEL + 0.5f, onColor, true);
-        tv.setGravity(Gravity.CENTER);
-        int padH = dp(c, 10), padV = v(c, 5);
-        tv.setPadding(padH, padV, padH, padV);
-        tv.setBackground(round(c, containerColor, Color.TRANSPARENT, R_S, 0));
-        return tv;
-    }
-
     // ================= 布局参数 =================
 
     public static LinearLayout.LayoutParams lp(int w, int h) {
