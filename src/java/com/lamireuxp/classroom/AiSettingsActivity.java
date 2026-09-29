@@ -350,7 +350,7 @@ public class AiSettingsActivity extends BaseSettingsActivity {
                 if (value.equals(cur.auth)) return;
                 capture();
                 cur.auth = value;
-                applyTheme();
+                reapplyTheme();
             }
         });
     }
@@ -405,7 +405,7 @@ public class AiSettingsActivity extends BaseSettingsActivity {
     /** 改完内存里的值要重建界面时走这个：跳过那一次 capture。 */
     private void rebuildFromState() {
         skipCaptureOnce = true;
-        applyTheme();
+        reapplyTheme();
     }
 
     /** 换主题或切协议会重建整个 body，输入到一半的内容不能丢。 */
@@ -420,10 +420,10 @@ public class AiSettingsActivity extends BaseSettingsActivity {
         cur.field = g.field;
     }
 
-    @Override protected void applyTheme() {
+    @Override protected void onRebuildUi() {
         if (skipCaptureOnce) skipCaptureOnce = false;
         else capture();
-        super.applyTheme();
+        super.onRebuildUi();
     }
 
     /**

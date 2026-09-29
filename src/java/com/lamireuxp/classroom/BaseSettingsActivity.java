@@ -19,14 +19,11 @@ import android.widget.TextView;
  *
  * 子类只需要实现 title() 和 fillBody()。
  */
-public abstract class BaseSettingsActivity extends Activity {
+public abstract class BaseSettingsActivity extends BaseActivity {
 
     protected LinearLayout pageRoot;
     /** 内容容器。子类往这里加东西。 */
     protected LinearLayout body;
-
-    /** 上次渲染时的深浅状态，用来判断从别处回来要不要重新着色。 */
-    private boolean renderedDark;
 
     /** 顶栏标题。 */
     protected abstract String title();
@@ -35,34 +32,14 @@ public abstract class BaseSettingsActivity extends Activity {
     protected abstract void fillBody(LinearLayout body);
 
     @Override
-    /** 先定主题再 super.onCreate（状态栏与对话框的配色在这一刻定下），然后建骨架。 */
-    protected void onCreate(Bundle b) {
-        // 必须在 super.onCreate 之前：应用主题资源
-        setTheme(Prefs.isDark(this) ? R.style.AppTheme_Dark : R.style.AppTheme);
-        super.onCreate(b);
-        applyTheme();
+    /** 建骨架（主题与窗口层由 BaseActivity 负责）。 */
+    protected void onCreateUi(Bundle b) {
+        buildUi();
     }
 
     @Override
-    /** 从别处回来时检查深浅色是否变过（主题可以在别的页面被改），变了就就地重绘。 */
-    protected void onResume() {
-        super.onResume();
-        // 主题可能在别处被改过，回来时要重新着色
-        if (renderedDark != Ui.isDark(this)) applyTheme();
-    }
-
-    @Override
-    /** 系统深浅色变化：跟随系统模式下自己重绘（manifest 声明了 uiMode，系统不会重建）。 */
-    public void onConfigurationChanged(Configuration nc) {
-        super.onConfigurationChanged(nc);
-        // uiMode 在 manifest 的 configChanges 里声明过，系统切深浅色时不会自动重建
-        if (Prefs.THEME_SYSTEM.equals(Prefs.themeMode(this))) applyTheme();
-    }
-
-    /** 就地应用主题：不重建 Activity，只重新着色并重建内容。 */
-    protected void applyTheme() {
-        Ui.applyWindowTheme(this);
-        renderedDark = Ui.isDark(this);
+    /** 就地重建整页（窗口层与深浅检查由 BaseActivity 负责）。 */
+    protected void onRebuildUi() {
         buildUi();
     }
 

@@ -133,15 +133,15 @@ public class TsSettingsActivity extends BaseSettingsActivity {
     private void pickMode(String value) {
         if (value.equals(mode)) return;
         mode = value;
-        applyTheme();
+        reapplyTheme();
     }
 
     /** 换主题或切方式会重建 body，输入到一半的内容不能丢。 */
-    @Override protected void applyTheme() {
+    @Override protected void onRebuildUi() {
         String ep = fieldText(endpointField, null);
         String key = fieldText(keyField, null);
         String model = fieldText(modelField, null);
-        super.applyTheme();
+        super.onRebuildUi();
         if (ep != null) endpointField.setText(ep);
         if (key != null) keyField.setText(key);
         if (model != null) modelField.setText(model);
@@ -188,7 +188,7 @@ public class TsSettingsActivity extends BaseSettingsActivity {
         row.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 syncAi = !syncAi;   // 和 modeRow 一样：只改内存，落盘统一在「保存」
-                applyTheme();
+                reapplyTheme();
             }
         });
         return row;

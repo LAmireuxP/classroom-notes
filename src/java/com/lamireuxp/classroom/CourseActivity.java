@@ -35,7 +35,7 @@ import java.util.List;
  *  - 列表行用分隔线而非堆叠卡片（避免"卡片套卡片"反模式）
  *  - 强调色只用于主操作与选中态
  */
-public class CourseActivity extends Activity implements Dialogs.DialogHost {
+public class CourseActivity extends BaseActivity implements Dialogs.DialogHost {
 
     private static final int REQ_MIC = 201;
     /** API 33+ 的通知权限申请码。和麦克风分开，回调里才能分辨是哪一项被拒。 */
@@ -87,14 +87,11 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
 
     @Override
     /**
-     * 进入课程页：先定主题，再取课程数据，最后建界面。
+     * 进入课程页：取课程数据，建界面（主题与窗口层由 BaseActivity 负责）。
      * 课程取不到就直接 finish()——比如用户在首页删了这门课再按返回键回来，
      * 硬撑下去只会在渲染时到处空指针。
      */
-    protected void onCreate(Bundle b) {
-        // 必须在 super.onCreate 之前：应用主题资源
-        setTheme(Prefs.isDark(this) ? R.style.AppTheme_Dark : R.style.AppTheme);
-        super.onCreate(b);
+    protected void onCreateUi(Bundle b) {
         db = Db.get(this);
         courseId = getIntent().getStringExtra("courseId");
         course = db.course(courseId);
@@ -105,34 +102,24 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         // 提醒通知 / 全部待办页会带 tab=todos，落在待办页签上而不是默认的笔记
         String wantTab = getIntent().getStringExtra("tab");
         if ("todos".equals(wantTab)) tab = "todos";
-        applyWindowTheme();
         buildUi();
     }
 
-    /** 窗口层（状态栏 / 导航栏 / 图标明暗）。 */
-    private void applyWindowTheme() {
-        Ui.applyWindowTheme(this);
+    @Override
+    /** 就地重建整页（窗口层与深浅检查由 BaseActivity 负责）。 */
+    protected void onRebuildUi() {
+        buildUi();
     }
 
     @Override
-    /**
-     * 系统深浅色变化时自己重建（manifest 里声明了 uiMode，系统不会替我们重建）。
-     * 只在「跟随系统」模式下重建；正在录音时不动，免得把录音会话弄丢。
-     */
-    public void onConfigurationChanged(Configuration nc) {
-        super.onConfigurationChanged(nc);
-        // uiMode 在 manifest 的 configChanges 里声明过，系统切深浅色时不会自动重建。
-        // 跟随系统模式下必须自己重建；正在录音时先不动，免得把录音会话弄丢。
-        if (Prefs.THEME_SYSTEM.equals(Prefs.themeMode(this)) && !isRecording()) recreate();
+    /** 录音中暂缓重建（deferThemeRebuild）——那会把正在显示的录音面板顶掉。 */
+    protected boolean deferThemeRebuild() {
+        return isRecording();
     }
 
     @Override
-    /**
-     * 回到前台重画一次：内容可能被别处改过（从设置页回来、导入备份、改了 AI 配置）。
-     * 录音中不重画——那会把正在显示的录音面板顶掉。
-     */
-    protected void onResume() {
-        super.onResume();
+    /** 回到前台重画一次：内容可能被别处改过（从设置页回来、导入备份、改了 AI 配置）。 */
+    protected void onResumed() {
         if (!isRecording()) renderContent();
     }
 

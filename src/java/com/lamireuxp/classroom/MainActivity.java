@@ -27,7 +27,7 @@ import java.util.List;
  * 结构：Top App Bar / SearchBar / （统计摘要卡 + 课程卡片列表）或（跨课程搜索结果）/ FAB。
  * 搜索框有关键词时整页切成结果态，两者不同时出现——搜索是「专注模式」。
  */
-public class MainActivity extends Activity implements Dialogs.DialogHost {
+public class MainActivity extends BaseActivity implements Dialogs.DialogHost {
 
     private Db db;
     private ScrollView scroller;
@@ -39,25 +39,14 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
     private final java.util.List<AlertDialog> openSheets = new java.util.ArrayList<AlertDialog>();
 
     private String query = "";
-    /** 上次渲染时的深浅状态，用来判断从设置页回来要不要重新着色。 */
-    private boolean renderedDark;
 
     @Override
-    /**
-     * 首页入口：先定主题（必须在 super.onCreate 之前，否则状态栏与对话框会用错配色），
-     * 再打开数据库、建界面。
-     */
-    protected void onCreate(Bundle b) {
-        // 必须在 super.onCreate 之前：应用主题资源（窗口背景 / 状态栏 / 对话框默认色）。
-        // 这里原来漏了，MainActivity 一直吃 manifest 里的浅色主题，
-        // 只因为颜色都是代码显式设的才看着正常——状态栏和对话框会不对。
-        setTheme(Prefs.isDark(this) ? R.style.AppTheme_Dark : R.style.AppTheme);
-        super.onCreate(b);
+    /** 首页入口：打开数据库、建界面（主题与窗口层由 BaseActivity 负责）。 */
+    protected void onCreateUi(Bundle b) {
         db = Db.get(this);
         // 闹钟不跨重启，且部分 ROM 在「强制停止」时会顺手清掉它。
         // 每次启动重新排一遍是这里最省心的兜底：查一次库 + 几次 set，代价可以忽略。
         Reminders.rescheduleAll(this);
-        applyWindowTheme();
         buildUi();
     }
 
@@ -92,50 +81,22 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
     }
 
     /**
-     * 就地应用主题：不重建 Activity，只把窗口装饰和整页重新着色。
-     *
-     * 为什么不 recreate()：重建会有一下闪烁，而且会把正在播放的动画打断。
+     * 就地重新着色：不 recreate()——重建会有一下闪烁，还会打断正在播放的动画。
      * 本 App 的颜色全部来自 Ui.tone()（直接读 Prefs）、视图也全是代码构建的，
-     * 所以「重新构建一遍」和 recreate 的视觉效果等价，但没有闪烁。
+     * 「重新构建一遍」和 recreate 的视觉效果等价，但没有闪烁。
+     * 窗口层与深浅检查由 BaseActivity 负责，这里只关抽屉、重建内容。
      */
-    private void applyTheme() {
+    @Override
+    protected void onRebuildUi() {
         dismissSheets();
-        applyWindowTheme();
         buildUi();
         refresh();
     }
 
-    /** 窗口层（状态栏 / 导航栏 / 图标明暗）。 */
-    private void applyWindowTheme() {
-        Ui.applyWindowTheme(this);
-        renderedDark = Ui.isDark(this);
-    }
-
     @Override
-    /**
-     * 系统深浅色变化时自己重绘（manifest 声明了 uiMode，系统不会替我们重建）。
-     * 只在「跟随系统」模式下重绘；浅色/深色是用户的显式选择，不该被系统设置影响。
-     */
-    public void onConfigurationChanged(Configuration nc) {
-        super.onConfigurationChanged(nc);
-        // manifest 把 uiMode 声明进了 configChanges，系统切深浅色时 Activity
-        // 不会自动重建。跟随系统模式下必须自己重绘，否则界面停在旧配色。
-        if (Prefs.THEME_SYSTEM.equals(Prefs.themeMode(this))) applyTheme();
-    }
-
-    @Override
-    /**
-     * 从别处回来：深浅色变了就整体重新着色（applyTheme 内部会重画内容），
-     * 否则至少刷新一次列表——课程/笔记可能在课程页被改过。
-     */
-    protected void onResume() {
-        super.onResume();
-        // 主题可能在设置页被改过，回来时要重新着色（applyTheme 内部会 refresh）
-        if (renderedDark != Ui.isDark(this)) {
-            applyTheme();
-        } else {
-            refresh();
-        }
+    /** 从别处回来：课程/笔记可能在课程页被改过，至少刷新一次列表。 */
+    protected void onResumed() {
+        refresh();
     }
 
     @Override
@@ -191,6 +152,30 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         scroller.addView(contentBox);
         column.addView(scroller);
 
+        // ---------- 搜索栏（MD3 SearchBar + 前导图标，只在这里建一次）----------
+        // 排在待办进度前面：搜索是「现在就要用」的，进度是「顺便看一眼」的。
+        // 首页搜的是**全部课程**（hint 里写明范围）——课程页那一条才是课内搜索。
+        // 原先它在 refresh() 里随列表一起重建：每增删一门课回到首页，焦点和
+        // 软键盘就丢一次，TextWatcher 也得重挂一遍。refresh 现在只换它下面的内容。
+        LinearLayout searchBox = Ui.searchBarWithIcon(this, "搜索全部课程的笔记…",
+                R.drawable.ic_search);
+        search = Ui.searchInput(searchBox);
+        if (query.length() > 0) search.setText(query);
+        search.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(Editable s) {
+                query = s.toString().trim();
+                // 只重建搜索框下面那块。连搜索框一起重建的话，输入焦点和软键盘
+                // 会在每敲一个字时掉一次——这正是把重建范围死死限定在列表上的原因。
+                fillBelowSearch();
+            }
+        });
+        contentBox.addView(searchBox);
+
+        belowBox = Ui.column(this);
+        contentBox.addView(belowBox);
+
         // ---------- FAB（MD3 标准：56dp，距边缘 16dp）----------
         // 和课程页共用 Ui.fab / Ui.placeFab：两处的「新建」是同一套操作
         fab = Ui.fab(this, "新建课程", new Runnable() {
@@ -231,7 +216,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         // 主题开关（胶囊 + 月亮/太阳，参考 galaxy Toggle-switches）
         // 按下即生效：开关内部写偏好后回调这里就地重绘，不等动画、不重建 Activity
         View themeSwitch = ThemeSwitch.create(this, new Runnable() {
-            @Override public void run() { applyTheme(); }
+            @Override public void run() { reapplyTheme(); }
         });
         LinearLayout.LayoutParams tsp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -254,30 +239,12 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
 
     // ================== 渲染 ==================
 
+    /**
+     * 刷新内容：只重建搜索框下面那块（统计卡 + 课程列表，或搜索结果）。
+     * 搜索栏在 buildUi 里只建一次——增删课程、从别的页面回来都走这里，
+     * 输入焦点与软键盘不再丢。
+     */
     private void refresh() {
-        contentBox.removeAllViews();
-
-        // ---- 搜索栏（MD3 SearchBar + 前导图标）----
-        // 排在待办进度前面：搜索是「现在就要用」的，进度是「顺便看一眼」的。
-        // 首页搜的是**全部课程**（hint 里写明范围）——课程页那一条才是课内搜索。
-        LinearLayout searchBox = Ui.searchBarWithIcon(this, "搜索全部课程的笔记…",
-                R.drawable.ic_search);
-        search = Ui.searchInput(searchBox);
-        if (query.length() > 0) search.setText(query);
-        search.addTextChangedListener(new TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
-            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
-            @Override public void afterTextChanged(Editable s) {
-                query = s.toString().trim();
-                // 只重建搜索框下面那块。连搜索框一起重建的话，输入焦点和软键盘
-                // 会在每敲一个字时掉一次——这正是原来把重建范围死死限定在列表上的原因。
-                fillBelowSearch();
-            }
-        });
-        contentBox.addView(searchBox);
-
-        belowBox = Ui.column(this);
-        contentBox.addView(belowBox);
         fillBelowSearch();
     }
 

@@ -23,49 +23,28 @@ import java.util.List;
  *
  * 只列**未完成**的：已经勾掉的不是「要做的事」，混在里面只会稀释重点。
  */
-public class AllTodosActivity extends Activity {
+public class AllTodosActivity extends BaseActivity {
 
     private Db db;
     private LinearLayout content;
     private ScrollView scroller;
-    /** 上次渲染时的深浅状态，用来判断从别处回来要不要重新着色。 */
-    private boolean renderedDark;
 
     @Override
-    protected void onCreate(Bundle b) {
-        // 必须在 super.onCreate 之前：应用主题资源（窗口背景 / 状态栏 / 对话框默认色）
-        setTheme(Prefs.isDark(this) ? R.style.AppTheme_Dark : R.style.AppTheme);
-        super.onCreate(b);
+    protected void onCreateUi(Bundle b) {
         db = Db.get(this);
-        applyWindowTheme();
         buildUi();
     }
 
-    /** 窗口层（状态栏 / 导航栏 / 图标明暗）。 */
-    private void applyWindowTheme() {
-        Ui.applyWindowTheme(this);
-        renderedDark = Ui.isDark(this);
+    @Override
+    /** 就地重建整页并重画列表（窗口层与深浅检查由 BaseActivity 负责）。 */
+    protected void onRebuildUi() {
+        buildUi();
+        render();
     }
 
     @Override
-    /** 跟随系统模式下系统切深浅色时自己重绘（manifest 声明了 uiMode，系统不会重建）。 */
-    public void onConfigurationChanged(Configuration nc) {
-        super.onConfigurationChanged(nc);
-        if (Prefs.THEME_SYSTEM.equals(Prefs.themeMode(this))) {
-            applyWindowTheme();
-            buildUi();
-            render();
-        }
-    }
-
-    @Override
-    /** 回来时重画：待办可能在课程页被勾掉或删掉了，主题也可能改过。 */
-    protected void onResume() {
-        super.onResume();
-        if (renderedDark != Ui.isDark(this)) {
-            applyWindowTheme();
-            buildUi();
-        }
+    /** 回来时重画：待办可能在课程页被勾掉或删掉了。 */
+    protected void onResumed() {
         render();
     }
 

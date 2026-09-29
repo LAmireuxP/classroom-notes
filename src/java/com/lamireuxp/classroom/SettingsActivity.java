@@ -88,7 +88,7 @@ public class SettingsActivity extends BaseSettingsActivity {
             @Override public void onClick(View v) {
                 if (mode.equals(Prefs.themeMode(SettingsActivity.this))) return;
                 Prefs.setThemeMode(SettingsActivity.this, mode);
-                applyTheme();
+                reapplyTheme();
             }
         });
         return row;
