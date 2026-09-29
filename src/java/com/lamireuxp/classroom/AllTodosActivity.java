@@ -127,7 +127,8 @@ public class AllTodosActivity extends Activity {
 
         List<Db.TodoHit> hits = db.openTodos();
         if (hits.isEmpty()) {
-            content.addView(emptyState());
+            content.addView(Ui.emptyState(this, R.drawable.ic_check,
+                    "没有未完成的待办", "在课程页的「待办」里点右下角加号添加"));
             Ui.animateListIn(content);
             return;
         }
@@ -155,7 +156,7 @@ public class AllTodosActivity extends Activity {
         // 已开始的那一段：null 表示还没输出过标题
         String current = null;
         for (Db.TodoHit h : hits) {
-            String bucket = bucketOf(nz(h.todo.due), today, tomorrow, weekEnd);
+            String bucket = bucketOf(Ui.nz(h.todo.due), today, tomorrow, weekEnd);
             if (!bucket.equals(current)) {
                 current = bucket;
                 content.addView(sectionLabel(bucket));
@@ -246,7 +247,7 @@ public class AllTodosActivity extends Activity {
         mp.leftMargin = Ui.dp(this, 12);
         mid.setLayoutParams(mp);
 
-        TextView title = Ui.text(this, nz(t.title), Ui.T_BODY + 1, Ui.onSurface(this), false);
+        TextView title = Ui.text(this, Ui.nz(t.title), Ui.T_BODY + 1, Ui.onSurface(this), false);
         title.setMaxLines(2);
         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         mid.addView(title);
@@ -254,7 +255,7 @@ public class AllTodosActivity extends Activity {
         StringBuilder sub = new StringBuilder();
         sub.append(h.courseName == null || h.courseName.length() == 0 ? "未分类" : h.courseName);
         sub.append(" · ").append(Ui.priorityName(t.priority));
-        if (nz(t.due).length() > 0) sub.append(" · 截止 ").append(Dates.shortDate(t.due));
+        if (Ui.nz(t.due).length() > 0) sub.append(" · 截止 ").append(Dates.shortDate(t.due));
         if (t.remindAt > 0) sub.append(" · 提醒 ").append(Dates.stamp(t.remindAt));
         TextView subTv = Ui.text(this, sub.toString(), Ui.T_LABEL,
                 Ui.onSurfaceVariant(this), false);
@@ -289,46 +290,4 @@ public class AllTodosActivity extends Activity {
         });
         return row;
     }
-
-    /** 空状态：没有未完成待办是好事，文案要给出下一步而不是一句「暂无」。 */
-    private View emptyState() {
-        LinearLayout box = Ui.column(this);
-        box.setGravity(Gravity.CENTER);
-        int p = Ui.dp(this, 32);
-        box.setPadding(p, Ui.v(this, 56), p, Ui.v(this, 56));
-
-        LinearLayout circle = new LinearLayout(this);
-        circle.setGravity(Gravity.CENTER);
-        circle.setBackground(Ui.round(this,
-                Ui.withAlpha(Ui.primary(this), 0.08f), Color.TRANSPARENT,
-                Ui.R_FULL, 0));
-        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
-                Ui.dp(this, 72), Ui.dp(this, 72));
-        clp.gravity = Gravity.CENTER;
-        circle.setLayoutParams(clp);
-        circle.addView(Icons.icon(this, R.drawable.ic_check, Ui.onSurfaceVariant(this), 32));
-        box.addView(circle);
-
-        TextView title = Ui.text(this, "没有未完成的待办", Ui.T_TITLE, Ui.onSurface(this), true);
-        title.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        tp.topMargin = Ui.v(this, 16);
-        title.setLayoutParams(tp);
-        box.addView(title);
-
-        TextView hint = Ui.text(this, "在课程页的「待办」里点右下角加号添加", Ui.T_BODY,
-                Ui.onSurfaceVariant(this), false);
-        hint.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hp.topMargin = Ui.v(this, 6);
-        hint.setLayoutParams(hp);
-        box.addView(hint);
-
-        return box;
-    }
-
-    /** null 安全取字符串：库里空字段读出来是 null，界面一律按空串处理。 */
-    private static String nz(String s) { return s == null ? "" : s; }
 }

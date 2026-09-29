@@ -229,18 +229,7 @@ public class Db extends SQLiteOpenHelper {
      * （courses 查询本就 ORDER BY sort ASC，新建课程 sort=courseCount() 排在末尾）。
      */
     public void reorderCourses(List<String> ids) {
-        SQLiteDatabase db = getWritableDatabase();
-        db.beginTransaction();
-        try {
-            for (int i = 0; i < ids.size(); i++) {
-                ContentValues v = new ContentValues();
-                v.put("sort", i);
-                db.update("courses", v, "id=?", new String[]{ids.get(i)});
-            }
-            db.setTransactionSuccessful();
-        } finally {
-            db.endTransaction();
-        }
+        reorder("courses", ids);
     }
 
     /**
@@ -466,18 +455,7 @@ public class Db extends SQLiteOpenHelper {
      * pinned 的 sort 是 0..k、未置顶是 k+1..N，各自组内顺序都对）。
      */
     public void reorderNotes(List<String> ids) {
-        SQLiteDatabase db = getWritableDatabase();
-        db.beginTransaction();
-        try {
-            for (int i = 0; i < ids.size(); i++) {
-                ContentValues v = new ContentValues();
-                v.put("sort", i);
-                db.update("notes", v, "id=?", new String[]{ids.get(i)});
-            }
-            db.setTransactionSuccessful();
-        } finally {
-            db.endTransaction();
-        }
+        reorder("notes", ids);
     }
 
     /** 删除单条笔记：进回收站（可恢复），不是真删。 */
@@ -616,13 +594,22 @@ public class Db extends SQLiteOpenHelper {
      * 「进行中 / 已完成」的分组由 ORDER BY completed ASC 决定，两组各自组内顺序按 sort。
      */
     public void reorderTodos(List<String> ids) {
+        reorder("todos", ids);
+    }
+
+    /**
+     * 重排一张表：按传入的完整新顺序把 sort 写成 0..N-1，单事务。
+     * reorderCourses / reorderNotes / reorderTodos 共用——三张表的排序机制
+     * 完全相同，只是表名不同；调用方保证 ids 只含未删记录（从渲染列表来）。
+     */
+    private void reorder(String table, List<String> ids) {
         SQLiteDatabase db = getWritableDatabase();
         db.beginTransaction();
         try {
             for (int i = 0; i < ids.size(); i++) {
                 ContentValues v = new ContentValues();
                 v.put("sort", i);
-                db.update("todos", v, "id=?", new String[]{ids.get(i)});
+                db.update(table, v, "id=?", new String[]{ids.get(i)});
             }
             db.setTransactionSuccessful();
         } finally {

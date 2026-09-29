@@ -335,7 +335,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         Dialogs.form(this, "编辑课程",
                 new String[]{"课程名称", "授课教师"},
                 new String[]{"课程名称", "教师姓名"},
-                new String[]{nz(course.name), nz(course.teacher)},
+                new String[]{Ui.nz(course.name), Ui.nz(course.teacher)},
                 new boolean[]{false, false},
                 new Dialogs.OnSubmit() {
                     @Override public void onSubmit(EditText[] f) {
@@ -492,7 +492,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         content.addView(count);
 
         if (notes.isEmpty()) {
-            content.addView(emptyState(R.drawable.ic_md,
+            content.addView(Ui.emptyState(this, R.drawable.ic_md,
                     query.length() > 0 ? "没有匹配的笔记" : "记录第一节课",
                     query.length() > 0 ? "试试换个关键词" : "点右下角加号写下课堂要点"));
             return;
@@ -631,7 +631,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
             head.addView(dot);
         }
 
-        TextView title = Ui.text(this, nz(n.title), Ui.T_TITLE, Ui.onSurface(this), true);
+        TextView title = Ui.text(this, Ui.nz(n.title), Ui.T_TITLE, Ui.onSurface(this), true);
         LinearLayout.LayoutParams tp = Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         title.setLayoutParams(tp);
         title.setMaxLines(1);
@@ -657,7 +657,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         // ---- 正文预览 / 全文 ----
         // 折叠时用 onSurfaceVariant（轻一号，表示是摘要）；展开时用 onSurface（正文，
         // 要清晰可读）。颜色随展开态切换，比单纯截断长度更能表达「这是完整内容」。
-        String text = nz(n.content);
+        String text = Ui.nz(n.content);
         TextView bodyTv = Ui.text(this, expanded ? text : preview(text), Ui.T_BODY,
                 expanded ? Ui.onSurface(this) : Ui.onSurfaceVariant(this), false);
         // 行高 14sp + 5dp ≈ 1.57，对齐 Notion body-md 的 1.55。
@@ -754,7 +754,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         private void confirmDeleteNote(final Db.Note n) {
         // 不写「不可恢复」：删除是软删，进回收站可以恢复。
         // 提示语里点明去哪恢复——用户最需要「我刚才删错了」的答案就在这一句里。
-        Dialogs.confirm(this, "删除笔记", "确定删除「" + nz(n.title) + "」？\n"
+        Dialogs.confirm(this, "删除笔记", "确定删除「" + Ui.nz(n.title) + "」？\n"
                         + "删掉的笔记会放进回收站，之后可以恢复。",
                 "删除", new Runnable() {
                     @Override public void run() {
@@ -779,7 +779,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     private void renderTodos() {
         List<Db.Todo> todos = db.todos(courseId);
         if (todos.isEmpty()) {
-            content.addView(emptyState(R.drawable.ic_list, "添加第一个待办",
+            content.addView(Ui.emptyState(this, R.drawable.ic_list, "添加第一个待办",
                     "点右下角加号，把作业和复习拆成小任务"));
             return;
         }
@@ -891,7 +891,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         mp.leftMargin = Ui.dp(this, 14);
         mid.setLayoutParams(mp);
 
-        TextView title = Ui.text(this, nz(t.title), Ui.T_BODY + 1,
+        TextView title = Ui.text(this, Ui.nz(t.title), Ui.T_BODY + 1,
                 t.completed ? Ui.onSurfaceVariant(this) : Ui.onSurface(this), false);
         if (t.completed) title.setPaintFlags(title.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
         mid.addView(title);
@@ -932,44 +932,6 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         return Ui.priorityName(p);
     }
 
-    /** 空状态要教学，而不只是"暂无"（operate.md 规范）。 */
-    private View emptyState(int iconRes, String title, String hint) {
-        LinearLayout box = Ui.column(this);
-        box.setGravity(Gravity.CENTER);
-        int p = Ui.dp(this, 32);
-        box.setPadding(p, Ui.v(this, 40), p, Ui.v(this, 40));
-
-        LinearLayout circle = new LinearLayout(this);
-        circle.setGravity(Gravity.CENTER);
-        // 极淡的主题色底，与首页空状态一致
-        circle.setBackground(Ui.round(this,
-                Ui.withAlpha(Ui.primary(this), 0.08f), Color.TRANSPARENT, Ui.R_FULL, 0));
-        int s = Ui.dp(this, 72);
-        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(s, s);
-        clp.gravity = Gravity.CENTER;
-        circle.setLayoutParams(clp);
-        circle.addView(Icons.icon(this, iconRes, Ui.onSurfaceVariant(this), 32));
-        box.addView(circle);
-
-        TextView tv = Ui.text(this, title, Ui.T_TITLE, Ui.onSurface(this), true);
-        tv.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        tp.topMargin = Ui.v(this, 16);
-        tv.setLayoutParams(tp);
-        box.addView(tv);
-
-        TextView hintTv = Ui.text(this, hint, Ui.T_BODY, Ui.onSurfaceVariant(this), false);
-        hintTv.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hp.topMargin = Ui.v(this, 6);
-        hintTv.setLayoutParams(hp);
-        box.addView(hintTv);
-
-        return box;
-    }
-
     // ================== 新建 / 编辑 ==================
 
     private void noteDialog(final Db.Note editing) {
@@ -978,9 +940,9 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                 new String[]{"标题", "日期", "笔记内容", "重点（每行一条）"},
                 new String[]{"第一章 极限与连续", Dates.today(), "课堂内容、理解与疑问…", "每行一条重点"},
                 new String[]{
-                        isEdit ? nz(editing.title) : "",
-                        isEdit ? nz(editing.date) : Dates.today(),
-                        isEdit ? nz(editing.content) : "",
+                        isEdit ? Ui.nz(editing.title) : "",
+                        isEdit ? Ui.nz(editing.date) : Dates.today(),
+                        isEdit ? Ui.nz(editing.content) : "",
                         isEdit && editing.keyPoints != null ? Db.joinString(editing.keyPoints) : ""
                 },
                 new boolean[]{false, false, true, true},
@@ -1606,7 +1568,5 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         });
     }
 
-    /** null 安全取字符串（课程名、教师等字段可能为空）。 */
-    private static String nz(String s) { return s == null ? "" : s; }
 
 }

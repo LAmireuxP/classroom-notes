@@ -323,7 +323,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         List<Db.Course> courses = db.courses();
 
         if (courses.isEmpty()) {
-            listBox.addView(emptyState(R.drawable.ic_folder, "还没有课程",
+            listBox.addView(Ui.emptyState(this, R.drawable.ic_folder, "还没有课程",
                     "点击右下角 + 新建第一门课程"));
             return;
         }
@@ -401,7 +401,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         box.addView(count);
 
         if (hits.isEmpty()) {
-            box.addView(emptyState(R.drawable.ic_md, "没有匹配的笔记",
+            box.addView(Ui.emptyState(this, R.drawable.ic_md, "没有匹配的笔记",
                     "换个关键词试试，搜索覆盖全部课程的标题、正文和重点"));
             return box;
         }
@@ -446,7 +446,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
 
         // 头行：笔记标题 + 日期
         LinearLayout head = Ui.row(this);
-        TextView title = Ui.text(this, nz(h.note.title), Ui.T_TITLE,
+        TextView title = Ui.text(this, Ui.nz(h.note.title), Ui.T_TITLE,
                 Ui.onSurface(this), true);
         title.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         title.setMaxLines(1);
@@ -497,8 +497,6 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         return line;
     }
 
-    /** null 安全取字符串：库里空字段读出来是 null，界面一律按空串处理。 */
-    private static String nz(String s) { return s == null ? "" : s; }
 
     /**
      * 顶部统计摘要 —— 只讲待办：按优先级三行进度（圆点 + 数字 + 条），纵向排开。
@@ -646,48 +644,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         return row;
     }
 
-    /**
-     * 空状态。空状态要「教学」而不只是「暂无」——给一个能立刻做的动作，
-     * 或者一条能立刻试的下一步，而不是一句冷冰冰的提示。
-     * 参数化是因为首页现在有两种空状态：一门课都没建，和搜索没有命中。
-     */
-    private View emptyState(int iconRes, String titleText, String hint) {
-        LinearLayout box = Ui.column(this);
-        box.setGravity(Gravity.CENTER);
-        int ph = Ui.dp(this, 48), pv = Ui.v(this, 48);
-        box.setPadding(ph, pv, ph, pv);
-
-        LinearLayout iconCircle = new LinearLayout(this);
-        iconCircle.setGravity(Gravity.CENTER);
-        // 极淡的主题色底（8% 透明度），比纯灰底更有品牌感，又不会喧宾夺主
-        iconCircle.setBackground(Ui.round(this,
-                Ui.withAlpha(Ui.primary(this), 0.08f), Color.TRANSPARENT, Ui.R_FULL, 0));
-        LinearLayout.LayoutParams icp = new LinearLayout.LayoutParams(
-                Ui.dp(this, 88), Ui.dp(this, 88));
-        icp.gravity = Gravity.CENTER;
-        iconCircle.setLayoutParams(icp);
-        iconCircle.addView(Icons.icon(this, iconRes, Ui.onSurfaceVariant(this), 40));
-        box.addView(iconCircle);
-
-        TextView title = Ui.text(this, titleText, Ui.T_TITLE, Ui.onSurface(this), true);
-        title.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        tp.topMargin = Ui.v(this, 18);
-        title.setLayoutParams(tp);
-        box.addView(title);
-
-        TextView sub = Ui.text(this, hint, Ui.T_BODY,
-                Ui.onSurfaceVariant(this), false);
-        sub.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        sp.topMargin = Ui.v(this, 6);
-        sub.setLayoutParams(sp);
-        box.addView(sub);
-
-        return box;
-    }
+    // 空状态收进了 Ui.emptyState——首页两种空状态（无课程 / 无搜索命中）共用它
 
     // ================== 菜单 / 弹窗 ==================
 

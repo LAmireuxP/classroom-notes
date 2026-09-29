@@ -890,4 +890,55 @@ public final class Ui {
         });
         return row;
     }
+
+    // ================= 空状态 =================
+
+    /**
+     * 空状态：居中的图标圆底 + 标题 + 一句「下一步」引导。
+     *
+     * 全 App 四处要用（首页无课程 / 无搜索命中、课程页无笔记、全部待办页、回收站），
+     * 原先四份几乎相同的实现各差几个像素——收进设计系统，长相比一致，改一处即全局生效。
+     * 图标圆底垫一层 8% 主题色（比纯灰更有品牌感，又不喧宾夺主），固定 72dp——
+     * 空状态是引导不是风景，太大反而跟内容抢视线。
+     */
+    public static LinearLayout emptyState(Context c, int iconRes, String title, String hint) {
+        LinearLayout box = column(c);
+        box.setGravity(Gravity.CENTER);
+        int p = dp(c, 32);
+        box.setPadding(p, v(c, 48), p, v(c, 48));
+
+        LinearLayout circle = new LinearLayout(c);
+        circle.setGravity(Gravity.CENTER);
+        circle.setBackground(round(c, withAlpha(primary(c), 0.08f),
+                Color.TRANSPARENT, R_FULL, 0));
+        int s = dp(c, 72);
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(s, s);
+        clp.gravity = Gravity.CENTER;
+        circle.setLayoutParams(clp);
+        circle.addView(Icons.icon(c, iconRes, onSurfaceVariant(c), 32));
+        box.addView(circle);
+
+        TextView tv = text(c, title, T_TITLE, onSurface(c), true);
+        tv.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        tp.topMargin = v(c, 16);
+        tv.setLayoutParams(tp);
+        box.addView(tv);
+
+        TextView hintTv = text(c, hint, T_BODY, onSurfaceVariant(c), false);
+        hintTv.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hp.topMargin = v(c, 6);
+        hintTv.setLayoutParams(hp);
+        box.addView(hintTv);
+
+        return box;
+    }
+
+    /** null 安全取字符串：库里空字段读出来是 null，界面一律按空串处理。 */
+    public static String nz(String s) {
+        return s == null ? "" : s;
+    }
 }

@@ -18,6 +18,7 @@ import android.widget.ScrollView;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 
 /**
@@ -100,9 +101,14 @@ public final class DragSort {
         private static final int SCROLL_STEP_DP = 8;
 
         private ScrollView scroller;
-        private List<View> rows;
         private Callback callback;
-        /** 行 → id / 分组的固定映射（拖动中顺序会变，映射不变）。 */
+        /**
+         * 可拖行的集合，只用于成员判断。落点判定/空档挪位每次都要问
+         * 「这个子 View 是不是可拖行」，容器子 View 一多，List.contains 的
+         * 线性扫就是 O(n²)；Set 把它降到 O(n)。行→id/分组的映射在 configure
+         * 时一次性建好，拖动中不变。
+         */
+        private final HashSet<View> rowSet = new HashSet<View>();
         private final HashMap<View, String> idOfRow = new HashMap<View, String>();
         private final HashMap<View, String> sectionOfRow = new HashMap<View, String>();
 
@@ -127,7 +133,7 @@ public final class DragSort {
         /** 长按定时器：到点还没滑走，就把按着的那一行拿起来。 */
         private final Runnable pendingLongPress = new Runnable() {
             @Override public void run() {
-                if (dragging || touchChild == null || rows == null) return;
+                if (dragging || touchChild == null || rowSet.isEmpty()) return;
                 beginDrag(touchChild, downY);
             }
         };
@@ -164,11 +170,12 @@ public final class DragSort {
         void configure(ScrollView scroller, List<View> rows, List<String> ids,
                        List<String> sections, Callback callback) {
             this.scroller = scroller;
-            this.rows = rows;
             this.callback = callback;
+            rowSet.clear();
             idOfRow.clear();
             sectionOfRow.clear();
             for (int i = 0; i < rows.size(); i++) {
+                rowSet.add(rows.get(i));
                 idOfRow.put(rows.get(i), ids.get(i));
                 sectionOfRow.put(rows.get(i), sections.get(i));
             }
@@ -283,7 +290,7 @@ public final class DragSort {
             int g0 = -1, g1 = -1;          // 同组槽位范围（空档自己也算组内一行）
             for (int i = 0; i < getChildCount(); i++) {
                 View c = getChildAt(i);
-                if (rows == null || !rows.contains(c)) continue;
+                if (!rowSet.contains(c)) continue;
                 boolean isGap = c == gapRow;
                 if (isGap || gapSection.equals(sectionOfRow.get(c))) {
                     if (g0 < 0) g0 = idx;
@@ -314,7 +321,7 @@ public final class DragSort {
             int counted = 0;
             for (int i = 0; i < getChildCount(); i++) {
                 View c = getChildAt(i);
-                if (rows == null || !rows.contains(c)) continue;
+                if (!rowSet.contains(c)) continue;
                 if (counted == slot) return c;
                 counted++;
             }
@@ -332,7 +339,7 @@ public final class DragSort {
             int counted = 0;
             for (int i = 0; i < getChildCount(); i++) {
                 View c = getChildAt(i);
-                if (rows == null || !rows.contains(c)) continue;
+                if (!rowSet.contains(c)) continue;
                 if (counted == target) { insertAt = i; break; }
                 counted++;
             }
@@ -396,11 +403,11 @@ public final class DragSort {
 
         /** 容器坐标 y 压在哪一行上（跳过 INVISIBLE 空档与非行子 View）——起拖选行用。 */
         private View rowUnder(float containerY) {
-            if (rows == null) return null;
+            if (rowSet.isEmpty()) return null;
             for (int i = 0; i < getChildCount(); i++) {
                 View c = getChildAt(i);
                 if (c.getVisibility() != View.VISIBLE) continue;
-                if (rows.contains(c) && containerY >= c.getTop() && containerY < c.getBottom()) {
+                if (rowSet.contains(c) && containerY >= c.getTop() && containerY < c.getBottom()) {
                     return c;
                 }
             }

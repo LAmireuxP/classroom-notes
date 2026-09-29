@@ -138,7 +138,8 @@ public class TrashActivity extends Activity {
 
         List<Db.TrashItem> items = db.trash();
         if (items.isEmpty()) {
-            content.addView(emptyState());
+            content.addView(Ui.emptyState(this, R.drawable.ic_check,
+                    "回收站是空的", "删掉的课程、笔记和待办会先放到这里，可以再恢复"));
             Ui.animateListIn(content);
             return;
         }
@@ -185,7 +186,7 @@ public class TrashActivity extends Activity {
         mp.leftMargin = Ui.dp(this, 12);
         mid.setLayoutParams(mp);
 
-        TextView title = Ui.text(this, nz(it.title), Ui.T_BODY + 1, Ui.onSurface(this), false);
+        TextView title = Ui.text(this, Ui.nz(it.title), Ui.T_BODY + 1, Ui.onSurface(this), false);
         title.setMaxLines(1);
         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         mid.addView(title);
@@ -217,44 +218,6 @@ public class TrashActivity extends Activity {
         row.addView(purge);
 
         return row;
-    }
-
-    private View emptyState() {
-        LinearLayout box = Ui.column(this);
-        box.setGravity(Gravity.CENTER);
-        int p = Ui.dp(this, 32);
-        box.setPadding(p, Ui.v(this, 56), p, Ui.v(this, 56));
-
-        LinearLayout circle = new LinearLayout(this);
-        circle.setGravity(Gravity.CENTER);
-        circle.setBackground(Ui.round(this,
-                Ui.withAlpha(Ui.primary(this), 0.08f), Color.TRANSPARENT,
-                Ui.R_FULL, 0));
-        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
-                Ui.dp(this, 72), Ui.dp(this, 72));
-        clp.gravity = Gravity.CENTER;
-        circle.setLayoutParams(clp);
-        circle.addView(Icons.icon(this, R.drawable.ic_check, Ui.onSurfaceVariant(this), 32));
-        box.addView(circle);
-
-        TextView title = Ui.text(this, "回收站是空的", Ui.T_TITLE, Ui.onSurface(this), true);
-        title.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        tp.topMargin = Ui.v(this, 16);
-        title.setLayoutParams(tp);
-        box.addView(title);
-
-        TextView hint = Ui.text(this, "删掉的课程、笔记和待办会先放到这里，可以再恢复",
-                Ui.T_BODY, Ui.onSurfaceVariant(this), false);
-        hint.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hp.topMargin = Ui.v(this, 6);
-        hint.setLayoutParams(hp);
-        box.addView(hint);
-
-        return box;
     }
 
     // ================== 动作 ==================
@@ -344,7 +307,4 @@ public class TrashActivity extends Activity {
                     }
                 });
     }
-
-    /** null 安全取字符串：库里空字段读出来是 null，界面一律按空串处理。 */
-    private static String nz(String s) { return s == null ? "" : s; }
 }
