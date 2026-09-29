@@ -11,6 +11,7 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.animation.LayoutTransition;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -265,6 +266,13 @@ public final class DragSort {
 
             row.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
             setLayoutTransition(transition);   // 只在拖动期间挂，落位就摘
+
+            // 拖动期间禁止祖先（ScrollView）按滚动语义抢流：快速拖动时每帧位移
+            // 可能超过触摸回弹阈值，ScrollView 一旦把流抢走，本容器只会收到
+            // CANCEL，拖动被腰斩。这是「子视图拖手势 vs 可滚动父容器」的标准
+            // 处理；落位时在 finishDrag 里解除。
+            ViewParent p = getParent();
+            if (p != null) p.requestDisallowInterceptTouchEvent(true);
         }
 
         private void trackPointer(MotionEvent e) {
@@ -383,6 +391,8 @@ public final class DragSort {
         }
 
         private void finishDrag(ImageView g, View row) {
+            ViewParent p = getParent();
+            if (p != null) p.requestDisallowInterceptTouchEvent(false);
             setLayoutTransition(null);
             if (g != null) {
                 ViewGroup overlay = overlay();

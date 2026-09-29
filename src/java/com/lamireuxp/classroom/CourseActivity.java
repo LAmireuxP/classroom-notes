@@ -857,6 +857,13 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         int ph = Ui.dp(this, 12), padV = Ui.v(this, 12);
         row.setPadding(ph, padV, ph, padV);
         row.setMinimumHeight(Ui.vMin(this, 56));
+        // 必须可点击：拖动排序靠容器拦截触摸流实现（DragSort），而拦截只在
+        // 「触摸目标存在」时才被咨询。行本身不可点的话，DOWN 会一路穿透到
+        // ScrollView 手里，容器根本不在派发链上——长按后影子会生成但冻在
+        // 原地，MOVE/UP 一个都收不到（真机实测）。笔记行 / 课程卡都有点击
+        // 行为天然可点；待办行没有行级动作，这里显式声明，点击无动作但
+        // 把触摸流留在链上。勾选框、删除按钮各自可点，不受影响。
+        row.setClickable(true);
 
         // MD3 Checkbox：圆形勾选
         final LinearLayout checkBox = Ui.row(this);
