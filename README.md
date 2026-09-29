@@ -26,8 +26,8 @@ WebView 方案，几项核心能力在 WebView 里无法工作（`webkitSpeechRe
 
 ## 图标与素材授权
 
-应用图标：**纯品牌蓝底（`#4F7DF7`）+ 白色鹿形 + 声波**——一色到底，
-不渐变、不加描边。白形对蓝底的对比度是满档，48dp 下轮廓直接立起来。
+应用图标：**纯白底 + 品牌蓝（`#4F7DF7`）鹿形 + 声波**——白底干净，蓝色
+轮廓在 48dp 下直接立起来。
 图标里的鹿是 **“Deer” by Caro Asercion**，来自 [game-icons.net](https://game-icons.net/1x1/caro-asercion/deer.html)，
 以 **[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)** 授权使用（该授权允许商用，要求署名）。
 本项目在原图基础上：裁成头颈胸像、加两道声波表达「音」，再归一化到 Android 自适应

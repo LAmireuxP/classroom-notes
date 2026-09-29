@@ -81,5 +81,5 @@
     <!-- 深主题的药丸底是浅灰（inverse_surface 跟着主题反），所以绿要压暗。 -->
     <color name="dark_success">#0E7A4A</color>
 
-    <color name="ic_launcher_background">#4F7DF7</color>
+    <color name="ic_launcher_background">#ffffff</color>
 </resources>
