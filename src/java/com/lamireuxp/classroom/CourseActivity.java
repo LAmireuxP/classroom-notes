@@ -45,7 +45,7 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     private String courseId;
     private Db.Course course;
 
-    private LinearLayout content;
+    private DragSort.Layout content;
     private LinearLayout tabBar;
     private LinearLayout recPanel;
     /** 页面根容器。加载条挂在这里而不是 content 上——content 会被 renderContent() 反复清空重建。 */
@@ -224,6 +224,8 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         View tb = topBar();
         Ui.padStatusBar(this, tb);
         page.addView(tb);
+        // 顶栏底部分隔线：顶栏与内容同色，滚动时没有边界，加一条 hairline 分开
+        page.addView(Ui.topBarHairline(this));
 
         ScrollView sv = new ScrollView(this);
         sv.setFillViewport(true);
@@ -257,7 +259,8 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
             @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
             @Override public void afterTextChanged(android.text.Editable s) {
                 query = s.toString().trim();
-                if ("notes".equals(tab) && !isRecording()) renderContent();
+                // 搜索过滤时不播入场动画：每次敲键都重绘，动画会连续抖动
+                if ("notes".equals(tab) && !isRecording()) renderContent(false);
             }
         });
         // 页签在上、搜索框在下：切换内容类型比搜索更「外层」，
@@ -270,7 +273,8 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         sbp.topMargin = Ui.v(this, 10);          // 与页签的间距（下方边距在 Ui 里已给）
         body.addView(searchBox);
 
-        content = Ui.column(this);
+        // 内容容器用 DragSort.Layout：它要在自己的触摸流里拦长按拖动（笔记/待办）
+        content = new DragSort.Layout(this);
         LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         cp.topMargin = Ui.v(this, 16);
@@ -425,15 +429,27 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
     }
 
     /**
-     * 按当前页签重建内容区。
+     * 按当前页签重建内容区（带入场动画）。
      * 每次重建都先清掉脉冲动画与录音面板引用：旧视图被移除后，那些句柄就是野引用了。
      */
     private void renderContent() {
+        renderContent(true);
+    }
+
+    /**
+     * 按当前页签重建内容区。
+     *
+     * @param animate true = 列表浮入（淡入 + 上移），用于页签切换、增删改、页面回来；
+     *                false = 瞬间出现，用于搜索过滤（每次敲键都重绘，动画会抖）和
+     *                拖动落位（视觉顺序已是最终顺序，动画反而像跳了一下）。
+     */
+    private void renderContent(boolean animate) {
         content.removeAllViews();
         recPanel = null;
         cancelRecPulses();
         if ("notes".equals(tab)) renderNotes();
         else renderTodos();
+        if (animate) Ui.animateListIn(content);
     }
 
     // ================== 笔记 ==================
@@ -497,15 +513,11 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         scrollToRow(focus);
 
         if (canDrag) {
-            DragSort.enable(this, content, scroller, rows, ids, sections,
+            DragSort.enable(content, scroller, rows, ids, sections,
                     new DragSort.Callback() {
                         @Override public void onDrop(List<String> newOrder) {
                             db.reorderNotes(newOrder);
-                            renderContent();      // 视觉顺序已是最终顺序，重绘只为同步状态
-                        }
-
-                        @Override public void onDragEnded(boolean dropped) {
-                            if (!dropped) renderContent();   // 拖到外面松手：复原列表
+                            // 不重绘：松手时视觉顺序已是最终顺序（空档就落在最终位置）
                         }
                     });
         }
@@ -589,8 +601,10 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         rlp.bottomMargin = Ui.v(this, 4);
         row.setLayoutParams(rlp);
+        // 展开时浮起来：surfaceContainer 底 + 微弱 elevation，折叠时透明
         row.setBackground(Ui.ripple(this, expanded ? Ui.surfaceContainer(this)
                 : Color.TRANSPARENT, Ui.R_M));
+        if (expanded) Ui.elevation(row, 2f);
         int ph = Ui.dp(this, 12), padV = Ui.v(this, 12);
         row.setPadding(ph, padV, ph, padV);
 
@@ -641,9 +655,11 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
         row.addView(head);
 
         // ---- 正文预览 / 全文 ----
+        // 折叠时用 onSurfaceVariant（轻一号，表示是摘要）；展开时用 onSurface（正文，
+        // 要清晰可读）。颜色随展开态切换，比单纯截断长度更能表达「这是完整内容」。
         String text = nz(n.content);
         TextView bodyTv = Ui.text(this, expanded ? text : preview(text), Ui.T_BODY,
-                Ui.onSurfaceVariant(this), false);
+                expanded ? Ui.onSurface(this) : Ui.onSurfaceVariant(this), false);
         // 行高 14sp + 5dp ≈ 1.57，对齐 Notion body-md 的 1.55。
         // 原来是 3dp（≈1.43），中文长段落读起来偏挤。
         bodyTv.setLineSpacing(Ui.dp(this, 5), 1f);
@@ -807,15 +823,11 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
             // 进行中与已完成各自成组，组内才能互相拖
             sections.add(t.completed ? "1" : "0");
         }
-        DragSort.enable(this, content, scroller, rows, ids, sections,
+        DragSort.enable(content, scroller, rows, ids, sections,
                 new DragSort.Callback() {
                     @Override public void onDrop(List<String> newOrder) {
                         db.reorderTodos(newOrder);
-                        renderContent();
-                    }
-
-                    @Override public void onDragEnded(boolean dropped) {
-                        if (!dropped) renderContent();
+                        // 不重绘：松手时视觉顺序已是最终顺序（空档就落在最终位置）
                     }
                 });
     }
@@ -929,8 +941,9 @@ public class CourseActivity extends Activity implements Dialogs.DialogHost {
 
         LinearLayout circle = new LinearLayout(this);
         circle.setGravity(Gravity.CENTER);
-        circle.setBackground(Ui.round(this, Ui.surfaceHigh(this),
-                Color.TRANSPARENT, Ui.R_FULL, 0));
+        // 极淡的主题色底，与首页空状态一致
+        circle.setBackground(Ui.round(this,
+                Ui.withAlpha(Ui.primary(this), 0.08f), Color.TRANSPARENT, Ui.R_FULL, 0));
         int s = Ui.dp(this, 72);
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(s, s);
         clp.gravity = Gravity.CENTER;

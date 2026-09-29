@@ -18,6 +18,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -172,6 +173,8 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         // 状态栏内边距：只在内容确实画到状态栏下面时才补（见 Ui.padStatusBar）
         Ui.padStatusBar(this, bar);
         column.addView(bar);
+        // 顶栏底部分隔线：顶栏与内容同色，滚动时没有边界，加一条 hairline 分开
+        column.addView(Ui.topBarHairline(this));
 
         // ---------- 可滚动内容 ----------
         scroller = new ScrollView(this);
@@ -278,7 +281,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         fillBelowSearch();
     }
 
-    private LinearLayout listBox;
+    private DragSort.Layout listBox;
     /** 搜索框下面那块（统计卡 + 课程列表，或者搜索结果）。输入时只重建它。 */
     private LinearLayout belowBox;
 
@@ -303,9 +306,9 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         belowBox.addView(courseListContainer());
     }
 
-    /** 课程列表容器。 */
+    /** 课程列表容器。用 DragSort.Layout——它要在自己的触摸流里拦长按拖动。 */
     private View courseListContainer() {
-        listBox = Ui.column(this);
+        listBox = new DragSort.Layout(this);
         fillCourseList();
         return listBox;
     }
@@ -349,11 +352,31 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         secHead.setLayoutParams(shp);
         listBox.addView(secHead);
 
+        List<View> rows = new ArrayList<View>();
+        List<String> ids = new ArrayList<String>();
+        List<String> sections = new ArrayList<String>();
         for (int i = 0; i < courses.size(); i++) {
-            listBox.addView(courseCard(courses.get(i)));
-            // 行间内嵌分隔线（MD3 列表规范），最后一行不加
-            if (i < courses.size() - 1) listBox.addView(divider());
+            View card = courseCard(courses.get(i));
+            listBox.addView(card);
+            // 卡片之间的间距已经做了视觉分隔，不再需要内嵌分隔线
+            rows.add(card);
+            ids.add(courses.get(i).id);
+            // 课程不分組：全部同组，任意两行之间都可换位
+            sections.add("0");
         }
+
+        // 长按拖动排序：与课程页笔记/待办同一套 DragSort。课程列表只在非搜索态渲染，
+        // 天然不存在「过滤后重排把没显示的条目写乱」的问题。
+        DragSort.enable(listBox, scroller, rows, ids, sections,
+                new DragSort.Callback() {
+                    @Override public void onDrop(List<String> newOrder) {
+                        db.reorderCourses(newOrder);
+                        // 不重绘：松手时视觉顺序已是最终顺序（空档就落在最终位置）
+                    }
+                });
+
+        // 列表浮入：淡入 + 上移，按序号错峰，整体从「拍上来」变成「浮上来」
+        Ui.animateListIn(listBox);
     }
 
     /**
@@ -406,6 +429,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         row.setClickable(true);
         row.setFocusable(true);
         row.setMinimumHeight(Ui.vMin(this, 64));
+        Ui.pressScale(row);
 
         // 色点用**课程色**而不是主题色：一眼看出这条来自哪门课
         View dot = new View(this);
@@ -492,7 +516,7 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
 
         LinearLayout card = Ui.column(this);
         card.setBackground(Ui.ripple(this, Ui.surfaceContainer(this), Ui.R_M));
-        int ph = Ui.dp(this, 14), pv = Ui.v(this, 14);
+        int ph = Ui.dp(this, 16), pv = Ui.v(this, 16);
         card.setPadding(ph, pv, ph, pv);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -500,6 +524,8 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         card.setLayoutParams(lp);
         card.setClickable(true);
         card.setFocusable(true);
+        Ui.elevation(card, 1f);
+        Ui.pressScale(card);
         card.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 startActivity(new Intent(MainActivity.this, AllTodosActivity.class));
@@ -548,19 +574,27 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
         return Ui.text(this, s, Ui.T_BODY, Ui.onSurfaceVariant(this), false);
     }
 
-    /** 课程行 —— 扁平列表行 + 色点标识（不用 border-left 色条，遵守 craft-floor）。 */
+    /**
+     * 课程行 —— 卡片式：surfaceContainer 底 + large 圆角 + 微弱浮起 + 按压回弹。
+     *
+     * 原来是扁平列表行 + 行间分隔线（MD3 列表规范）。首页的课程是**页面主体内容**而非
+     * 嵌套在另一张卡里，用卡片能给出更清晰的视觉分组与可点击感；课程页的笔记行保持
+     * 扁平列表（避免「卡片套卡片」）。
+     */
     private View courseCard(final Db.Course c) {
         LinearLayout row = Ui.row(this);
         LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rlp.bottomMargin = Ui.v(this, 2);
+        rlp.bottomMargin = Ui.v(this, 10);
         row.setLayoutParams(rlp);
-        int padH = Ui.dp(this, 14), padV = Ui.v(this, 14);
-        row.setPadding(padH, padV, Ui.dp(this, 6), padV);
-        row.setBackground(Ui.ripple(this, Color.TRANSPARENT, Ui.R_M));
+        int padH = Ui.dp(this, 16), padV = Ui.v(this, 14);
+        row.setPadding(padH, padV, Ui.dp(this, 8), padV);
+        row.setBackground(Ui.ripple(this, Ui.surfaceContainer(this), Ui.R_L));
         row.setClickable(true);
         row.setFocusable(true);
         row.setMinimumHeight(Ui.vMin(this, 64));
+        Ui.elevation(row, 1.5f);
+        Ui.pressScale(row);
 
         // 色点（课程标识，非色条）
         View dot = new View(this);
@@ -625,7 +659,9 @@ public class MainActivity extends Activity implements Dialogs.DialogHost {
 
         LinearLayout iconCircle = new LinearLayout(this);
         iconCircle.setGravity(Gravity.CENTER);
-        iconCircle.setBackground(Ui.round(this, Ui.surfaceHigh(this), Color.TRANSPARENT, Ui.R_FULL, 0));
+        // 极淡的主题色底（8% 透明度），比纯灰底更有品牌感，又不会喧宾夺主
+        iconCircle.setBackground(Ui.round(this,
+                Ui.withAlpha(Ui.primary(this), 0.08f), Color.TRANSPARENT, Ui.R_FULL, 0));
         LinearLayout.LayoutParams icp = new LinearLayout.LayoutParams(
                 Ui.dp(this, 88), Ui.dp(this, 88));
         icp.gravity = Gravity.CENTER;

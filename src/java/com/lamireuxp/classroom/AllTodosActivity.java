@@ -78,6 +78,8 @@ public class AllTodosActivity extends Activity {
         View bar = topBar();
         Ui.padStatusBar(this, bar);
         page.addView(bar);
+        // 顶栏底部分隔线
+        page.addView(Ui.topBarHairline(this));
 
         scroller = new ScrollView(this);
         scroller.setFillViewport(true);
@@ -126,6 +128,7 @@ public class AllTodosActivity extends Activity {
         List<Db.TodoHit> hits = db.openTodos();
         if (hits.isEmpty()) {
             content.addView(emptyState());
+            Ui.animateListIn(content);
             return;
         }
 
@@ -159,6 +162,8 @@ public class AllTodosActivity extends Activity {
             }
             content.addView(todoRow(h));
         }
+        // 列表浮入
+        Ui.animateListIn(content);
     }
 
     /**
@@ -294,7 +299,8 @@ public class AllTodosActivity extends Activity {
 
         LinearLayout circle = new LinearLayout(this);
         circle.setGravity(Gravity.CENTER);
-        circle.setBackground(Ui.round(this, Ui.surfaceHigh(this), Color.TRANSPARENT,
+        circle.setBackground(Ui.round(this,
+                Ui.withAlpha(Ui.primary(this), 0.08f), Color.TRANSPARENT,
                 Ui.R_FULL, 0));
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
                 Ui.dp(this, 72), Ui.dp(this, 72));

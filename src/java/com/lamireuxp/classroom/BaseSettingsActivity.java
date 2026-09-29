@@ -77,6 +77,8 @@ public abstract class BaseSettingsActivity extends Activity {
         setContentView(pageRoot);
 
         pageRoot.addView(topBar());
+        // 顶栏底部分隔线
+        pageRoot.addView(Ui.topBarHairline(this));
 
         ScrollView sv = new ScrollView(this);
         sv.setFillViewport(true);

@@ -190,6 +190,23 @@ public final class Ui {
         return dp(c, 48);
     }
 
+    /**
+     * 顶栏底部的极细分隔线。
+     *
+     * 顶栏与内容同色（surface），滚动时内容从顶栏下方滑过、两者之间没有视觉边界，
+     * 看起来像「粘在一起」。加一条 hairline（与卡片描边同色）就能把两层分开，
+     * 又不会像粗描边那样喧宾夺主。深色下用 dark_hairline（比 outline_variant 更暗），
+     * 与卡片描边一致。
+     */
+    public static View topBarHairline(Context c) {
+        View line = new View(c);
+        line.setBackgroundColor(hairline(c));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(c, 0.6f)));
+        line.setLayoutParams(lp);
+        return line;
+    }
+
     // ================= 右下角 FAB =================
 
     /**
@@ -460,7 +477,44 @@ public final class Ui {
         return t.substring(0, max) + "…";
     }
 
-        // ================= 容器 =================
+        // ================= 入场动画 =================
+
+    /**
+     * 列表项入场动画：淡入 + 轻微上移，按 index 错峰。
+     *
+     * 之前 rebuild 列表时（removeAllViews → 逐个 addView）所有行瞬间出现，
+     * 列表像「咣当一下拍上来」。给每行挂一段 250ms 的淡入 + 12dp 上移，
+     * 并按序号错峰 30ms（封顶 6 项之后不再增加，长列表不会等太久），
+     * 整体观感从「跳出来」变成「浮上来」。
+     *
+     * 只用渲染期变换（alpha / translationY），不触发布局，列表里也安全。
+     * 调用时机是 addView 之后——此时视图已挂载，animate() 直接生效。
+     */
+    public static void animateIn(View v, int index) {
+        v.setAlpha(0f);
+        v.setTranslationY(dp(v.getContext(), 12));
+        v.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(DUR_BASE)
+                .setStartDelay(Math.min(index * 30L, 180L))
+                .setInterpolator(EASE_STANDARD)
+                .start();
+    }
+
+    /**
+     * 批量给容器里的子视图挂入场动画。
+     * 用于 fillCourseList / renderContent 这类「整块重建」场景——
+     * 重建完调用一次，所有行一起浮上来。
+     */
+    public static void animateListIn(ViewGroup container) {
+        int n = container.getChildCount();
+        for (int i = 0; i < n; i++) {
+            animateIn(container.getChildAt(i), i);
+        }
+    }
+
+    // ================= 容器 =================
 
     /**
      * MD3 Card（filled 风格）：surfaceContainer 底 + large 圆角 + 极细描边。
@@ -546,9 +600,15 @@ public final class Ui {
         return et;
     }
 
-        /** MD3 SearchBar 风格输入框（药丸形，带前导搜索图标）。 */
+        /**
+     * MD3 SearchBar 风格输入框（药丸形，带前导搜索图标 + 尾部清除按钮）。
+     *
+     * 清除按钮在有文字时出现、空时隐藏——省得用户得长按 → 全选 → 删除
+     * 才能清空搜索词。它内部挂了自己的 TextWatcher 来管显隐，
+     * 与调用方挂的 TextWatcher 各自独立、互不干扰。
+     */
     public static LinearLayout searchBarWithIcon(Context c, String hint, int iconRes) {
-        LinearLayout box = row(c);
+        final LinearLayout box = row(c);
         box.setBackground(round(c, surfaceContainer(c), outlineVariant(c), R_FULL, 0.8f));
         int padH = dp(c, 18), padV = v(c, 11);
         box.setPadding(padH, padV, dp(c, 18), padV);
@@ -562,7 +622,7 @@ public final class Ui {
         icon.setLayoutParams(ip);
         box.addView(icon);
 
-        EditText et = new EditText(c);
+        final EditText et = new EditText(c);
         et.setHint(hint);
         et.setTextSize(T_BODY + 1);
         et.setTextColor(onSurface(c));
@@ -573,6 +633,39 @@ public final class Ui {
         et.setLayoutParams(new LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         box.addView(et);
+
+        // 尾部清除按钮：有文字时显示，空时隐藏
+        final ImageView clear = new ImageView(c);
+        clear.setImageResource(R.drawable.ic_close);
+        clear.setColorFilter(onSurfaceVariant(c), android.graphics.PorterDuff.Mode.SRC_IN);
+        LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(dp(c, 20), dp(c, 20));
+        clp.leftMargin = dp(c, 8);
+        clear.setLayoutParams(clp);
+        clear.setAlpha(0f);
+        clear.setClickable(true);
+        clear.setFocusable(true);
+        clear.setBackground(rippleBorderless(c, R_FULL));
+        clear.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                et.setText("");
+                et.requestFocus();
+            }
+        });
+        box.addView(clear);
+
+        // 内部 TextWatcher 只管清除按钮的显隐，不碰调用方的搜索逻辑
+        et.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(android.text.Editable s) {
+                boolean show = s != null && s.length() > 0;
+                if (show && clear.getAlpha() < 0.1f) {
+                    clear.animate().alpha(1f).setDuration(DUR_FAST).start();
+                } else if (!show && clear.getAlpha() > 0.9f) {
+                    clear.animate().alpha(0f).setDuration(DUR_FAST).start();
+                }
+            }
+        });
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);

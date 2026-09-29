@@ -223,6 +223,27 @@ public class Db extends SQLiteOpenHelper {
     }
 
     /**
+     * 重排课程：传入**完整的新顺序**（id 列表），把 sort 写成 0..N-1。
+     * 调用方保证 ids 只含未删的课程——从首页渲染列表里来，不会有脏数据。
+     * 与 reorderNotes / reorderTodos 同一套约定：课程不分組，顺序完全由 sort 决定
+     * （courses 查询本就 ORDER BY sort ASC，新建课程 sort=courseCount() 排在末尾）。
+     */
+    public void reorderCourses(List<String> ids) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            for (int i = 0; i < ids.size(); i++) {
+                ContentValues v = new ContentValues();
+                v.put("sort", i);
+                db.update("courses", v, "id=?", new String[]{ids.get(i)});
+            }
+            db.setTransactionSuccessful();
+        } finally {
+            db.endTransaction();
+        }
+    }
+
+    /**
      * 删除课程 —— **进回收站**，不是真删；连带的笔记与待办一起打上标记。
      *
      * 整批用同一个时间戳，这是恢复的关键：靠它把「这一次级联删掉的」重新凑回一组。

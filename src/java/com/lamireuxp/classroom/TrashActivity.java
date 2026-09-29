@@ -78,6 +78,8 @@ public class TrashActivity extends Activity {
         View bar = topBar();
         Ui.padStatusBar(this, bar);
         page.addView(bar);
+        // 顶栏底部分隔线
+        page.addView(Ui.topBarHairline(this));
 
         ScrollView sv = new ScrollView(this);
         sv.setFillViewport(true);
@@ -137,6 +139,7 @@ public class TrashActivity extends Activity {
         List<Db.TrashItem> items = db.trash();
         if (items.isEmpty()) {
             content.addView(emptyState());
+            Ui.animateListIn(content);
             return;
         }
 
@@ -158,6 +161,8 @@ public class TrashActivity extends Activity {
         content.addView(hint);
 
         for (Db.TrashItem it : items) content.addView(trashRow(it));
+        // 列表浮入
+        Ui.animateListIn(content);
     }
 
     /** 一行回收站内容：类型图标 + 标题 + 副标题 + 删除时刻 + 恢复 / 彻底删除。 */
@@ -222,7 +227,8 @@ public class TrashActivity extends Activity {
 
         LinearLayout circle = new LinearLayout(this);
         circle.setGravity(Gravity.CENTER);
-        circle.setBackground(Ui.round(this, Ui.surfaceHigh(this), Color.TRANSPARENT,
+        circle.setBackground(Ui.round(this,
+                Ui.withAlpha(Ui.primary(this), 0.08f), Color.TRANSPARENT,
                 Ui.R_FULL, 0));
         LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(
                 Ui.dp(this, 72), Ui.dp(this, 72));
