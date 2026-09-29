@@ -26,12 +26,9 @@ WebView 方案，几项核心能力在 WebView 里无法工作（`webkitSpeechRe
 
 ## 图标与素材授权
 
-应用图标：**纯白底 + 品牌蓝（`#4F7DF7`）鹿形 + 声波**——白底干净，蓝色
-轮廓在 48dp 下直接立起来。
-图标里的鹿是 **“Deer” by Caro Asercion**，来自 [game-icons.net](https://game-icons.net/1x1/caro-asercion/deer.html)，
-以 **[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)** 授权使用（该授权允许商用，要求署名）。
-本项目在原图基础上：裁成头颈胸像、加两道声波表达「音」，再归一化到 Android 自适应
-图标的安全区；鹿素材的图形与着色方式未改动。
+应用图标：**纯白底 + 品牌蓝（`#4F7DF7`）麦克风**——直白表达「录音」这一核心
+功能。纯几何画法（圆头胶囊 + U 形支架 + 底座），无外部素材依赖，不涉及第三方授权。
+图标资源由生成脚本画出后量化到 256 色（肉眼无差，体积 26.7 KB）。
 
 素材出处与授权逐条记在 [`tools/icon-source/SOURCES.md`](tools/icon-source/SOURCES.md)，
 生成流程见 `tools/icon-from-svg.py` 与 `tools/make-icons.py`。
