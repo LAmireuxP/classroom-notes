@@ -235,8 +235,8 @@ public class TrashActivity extends BaseActivity {
                     ? "已恢复（它所属的课程也一起回来了）"
                     : "已恢复");
         }
-        render();
-        buildUi();       // 顶栏的「清空」按钮要跟着出现或消失
+        buildUi();       // 先重建骨架：顶栏的「清空」按钮要跟着出现或消失
+        render();        // 再填内容——顺序反了会把 render 的结果整个换掉
     }
 
     /** 彻底删除前确认：这一步真的不可恢复，文案必须说清。 */
@@ -257,8 +257,8 @@ public class TrashActivity extends BaseActivity {
                             Reminders.cancel(TrashActivity.this, it.id);
                             db.purgeTodo(it.id);
                         }
-                        render();
                         buildUi();
+                        render();
                         Tip.success(TrashActivity.this, "已永久删除");
                     }
                 });
@@ -280,8 +280,8 @@ public class TrashActivity extends BaseActivity {
                             }
                         }
                         db.emptyTrash();
-                        render();
                         buildUi();
+                        render();
                         Tip.success(TrashActivity.this, "回收站已清空");
                     }
                 });

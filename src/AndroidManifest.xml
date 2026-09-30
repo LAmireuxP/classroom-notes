@@ -88,6 +88,24 @@
             android:exported="false" />
 
         <activity
+            android:name=".NoteEditorActivity"
+            android:label="笔记"
+            android:parentActivityName=".CourseActivity"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode"
+            android:exported="false" />
+
+        <activity
+            android:name=".TodoEditorActivity"
+            android:label="待办"
+            android:parentActivityName=".CourseActivity"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout|uiMode"
+            android:exported="false" />
+
+        <activity
             android:name=".TrashActivity"
             android:label="回收站"
             android:parentActivityName=".SettingsActivity"

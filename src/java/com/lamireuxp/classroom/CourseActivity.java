@@ -118,9 +118,10 @@ public class CourseActivity extends BaseActivity implements Dialogs.DialogHost {
     }
 
     @Override
-    /** 回到前台重画一次：内容可能被别处改过（从设置页回来、导入备份、改了 AI 配置）。 */
+    /** 回到前台重画一次：内容可能被别处改过（从编辑器回来、导入备份、改了 AI 配置）。
+     *  页签计数也一起刷：笔记/待办在编辑器里增删后，tab 上的数字要跟着变。 */
     protected void onResumed() {
-        if (!isRecording()) renderContent();
+        if (!isRecording()) { renderTabs(); renderContent(); }
     }
 
     @Override
@@ -232,8 +233,15 @@ public class CourseActivity extends BaseActivity implements Dialogs.DialogHost {
         // FAB：建当前页签对应的东西——笔记页签建笔记，待办页签建待办
         Ui.placeFab(rootFrame, Ui.fab(this, "新建", new Runnable() {
             @Override public void run() {
-                if ("notes".equals(tab)) noteDialog(null);
-                else todoDialog();
+                if ("notes".equals(tab)) {
+                    Intent it = new Intent(CourseActivity.this, NoteEditorActivity.class);
+                    it.putExtra("courseId", courseId);
+                    startActivity(it);
+                } else {
+                    Intent it = new Intent(CourseActivity.this, TodoEditorActivity.class);
+                    it.putExtra("courseId", courseId);
+                    startActivity(it);
+                }
             }
         }));
 
@@ -701,7 +709,12 @@ public class CourseActivity extends BaseActivity implements Dialogs.DialogHost {
                     }));
             ops.addView(actionCell(R.drawable.ic_edit, "编辑", Ui.primary(this),
                     new Runnable() {
-                        @Override public void run() { noteDialog(n); }
+                        @Override public void run() {
+                            Intent it = new Intent(CourseActivity.this, NoteEditorActivity.class);
+                            it.putExtra("courseId", courseId);
+                            it.putExtra("noteId", n.id);
+                            startActivity(it);
+                        }
                     }));
             ops.addView(actionCell(R.drawable.ic_ai, "AI 总结", Ui.primary(this),
                     new Runnable() {
@@ -928,232 +941,6 @@ public class CourseActivity extends BaseActivity implements Dialogs.DialogHost {
 
     // ================== 新建 / 编辑 ==================
 
-    private void noteDialog(final Db.Note editing) {
-        final boolean isEdit = editing != null;
-        Dialogs.form(this, isEdit ? "编辑笔记" : "新建笔记",
-                new String[]{"标题", "日期", "笔记内容", "重点（每行一条）"},
-                new String[]{"第一章 极限与连续", Dates.today(), "课堂内容、理解与疑问…", "每行一条重点"},
-                new String[]{
-                        isEdit ? Ui.nz(editing.title) : "",
-                        isEdit ? Ui.nz(editing.date) : Dates.today(),
-                        isEdit ? Ui.nz(editing.content) : "",
-                        isEdit && editing.keyPoints != null ? Db.joinString(editing.keyPoints) : ""
-                },
-                new boolean[]{false, false, true, true},
-                new Dialogs.OnSubmit() {
-                    @Override public void onSubmit(EditText[] f) {
-                        String title = f[0].getText().toString().trim();
-                        if (title.length() == 0) {
-                            Tip.error(CourseActivity.this, "请填写标题");
-                            return;
-                        }
-                        Db.Note n = isEdit ? editing : new Db.Note();
-                        n.courseId = courseId;
-                        n.title = title;
-                        String d = f[1].getText().toString().trim();
-                        n.date = d.length() == 0 ? Dates.today() : d;
-                        n.content = f[2].getText().toString().trim();
-                        n.keyPoints = Db.splitString(f[3].getText().toString());
-                        if (!isEdit) n.id = Id.gen();
-                        db.saveNote(n);
-                        if (submitDialog != null) submitDialog.dismiss();
-                        submitDialog = null;
-                        renderTabs();
-                        renderContent();
-                        Tip.success(CourseActivity.this, isEdit ? "笔记已更新" : "笔记已创建");
-                    }
-                });
-    }
-
-    /**
-     * 新建待办。优先级是点选而不是手输——原来要在输入框里敲 high / medium / low，
-     * 敲错一个字母会被静默改写成「中优先级」（那段校验只是把它改掉，用户并不知道自己写错了），
-     * 而且高/中/低那套颜色也没法在输入框里表达。
-     */
-    private void todoDialog() {
-        final LinearLayout box = Ui.column(this);
-        final TodoForm form = new TodoForm();
-        final Runnable render = new Runnable() {
-            @Override public void run() { renderTodoForm(box, form); }
-        };
-        render.run();
-
-        final AlertDialog dlg = Dialogs.form(this, "新建待办", box, "保存", new Dialogs.Saver() {
-            @Override public boolean save() { return saveTodo(form); }
-        });
-        Dialogs.focusFirst(dlg, true);
-    }
-
-    /** 新建待办的表单状态。点优先级会重建表单，已填的内容得先活在这里。 */
-    private static final class TodoForm {
-        String title = "";
-        String due = Dates.today();
-        String priority = "medium";
-        /** 提醒时间（epoch 毫秒）。0 = 不提醒。 */
-        long remindAt;
-        EditText titleField;
-        EditText dueField;
-    }
-
-    /**
-     * 重建待办表单。点优先级、改提醒都会走到这里，所以先把输入框里的值收回 TodoForm 再重画，
-     * 否则用户刚敲的任务内容会被「重建」清掉。
-     */
-    private void renderTodoForm(final LinearLayout box, final TodoForm f) {
-        if (f.titleField != null) f.title = f.titleField.getText().toString();
-        if (f.dueField != null) f.due = f.dueField.getText().toString();
-        box.removeAllViews();
-        f.titleField = formField(box, "任务内容", "完成第三章习题", f.title);
-        f.dueField = formField(box, "截止日期", Dates.today(), f.due);
-
-        formLabel(box, "优先级");
-        // 横排三段而不是纵向三行：三个互斥选项占一行，省一半高度。
-        // 圆点颜色与进度条、图例同源（Ui.priorityColor），选中的字色也会跟着变。
-        box.addView(Ui.segmentedRow(this, new String[]{"高", "中", "低"},
-                new int[]{Ui.priorityColor(this, "high"), Ui.priorityColor(this, "medium"),
-                        Ui.priorityColor(this, "low")},
-                Db.priorityIndex(f.priority), new Ui.Pick() {
-                    @Override public void onPick(int index) {
-                        String key = Db.PRIORITY_KEYS[index];
-                        if (key.equals(f.priority)) return;
-                        f.priority = key;
-                        renderTodoForm(box, f);
-                    }
-                }));
-
-        formLabel(box, "提醒");
-        box.addView(remindRow(box, f));
-    }
-
-    /**
-     * 提醒行：没设时是「不提醒（点这里设一个）」，设了就显示时刻、右侧多一个清除按钮。
-     *
-     * 用系统自带的日期 / 时间选择器而不是让用户手输：日期时间格式太多写法，
-     * 手输写错要么被当成无效值、要么落到一个意想不到的时刻上，选择器不会有这种歧义。
-     */
-    private View remindRow(final LinearLayout box, final TodoForm f) {
-        LinearLayout row = Ui.row(this);
-        int ph = Ui.dp(this, 14), pv = Ui.v(this, 11);
-        row.setPadding(ph, pv, ph, pv);
-        row.setMinimumHeight(Ui.vMin(this, 48));
-        row.setBackground(Ui.ripple(this, Ui.surfaceContainer(this), Ui.R_S));
-        row.setClickable(true);
-        row.setFocusable(true);
-
-        TextView tv = Ui.text(this,
-                f.remindAt > 0 ? "提醒时间　" + Dates.stamp(f.remindAt) : "不提醒（点这里设一个）",
-                Ui.T_BODY + 1,
-                f.remindAt > 0 ? Ui.onSurface(this) : Ui.onSurfaceVariant(this), false);
-        tv.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        row.addView(tv);
-
-        if (f.remindAt > 0) {
-            LinearLayout clear = Icons.iconButton(this, R.drawable.ic_close, 36, Ui.outline(this));
-            clear.setOnClickListener(new View.OnClickListener() {
-                @Override public void onClick(View v) {
-                    f.remindAt = 0;
-                    renderTodoForm(box, f);
-                }
-            });
-            row.addView(clear);
-        }
-
-        row.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { pickRemind(box, f); }
-        });
-        return row;
-    }
-
-    /**
-     * 先选日期、再选时间（两个系统对话框串起来）。
-     * 默认值：已经设过就从原值开始改；没设过用「现在往后一小时」——
-     * 提醒总是设给未来的事，从当前这一刻开始调很容易一不小心设成过去。
-     */
-    private void pickRemind(final LinearLayout box, final TodoForm f) {
-        long base = f.remindAt > 0 ? f.remindAt : System.currentTimeMillis() + 3600000L;
-        final int[] p = new int[5];
-        Dates.split(base, p);
-        new android.app.DatePickerDialog(this,
-                new android.app.DatePickerDialog.OnDateSetListener() {
-                    @Override public void onDateSet(android.widget.DatePicker dp,
-                                                    final int y, final int m, final int d) {
-                        new android.app.TimePickerDialog(CourseActivity.this,
-                                new android.app.TimePickerDialog.OnTimeSetListener() {
-                                    @Override public void onTimeSet(android.widget.TimePicker tp,
-                                                                    int hh, int mm) {
-                                        f.remindAt = Dates.at(y, m, d, hh, mm);
-                                        if (f.remindAt > System.currentTimeMillis()) {
-                                            ensureNotifyPermission();
-                                        }
-                                        renderTodoForm(box, f);
-                                    }
-                                }, p[3], p[4], true).show();
-                    }
-                }, p[0], p[1], p[2]).show();
-    }
-
-    /**
-     * API 33+ 要用户点头才发得出通知。放在「刚设完一个未来的提醒」这一刻问最合理：
-     * 用户此刻清楚这个权限是干什么用的；反过来，一进 App 就弹权限框会被当成骚扰。
-     */
-    private void ensureNotifyPermission() {
-        if (Build.VERSION.SDK_INT < 33) return;
-        if (Reminders.canNotify(this)) return;
-        requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"}, REQ_NOTIF);
-    }
-
-    /** 对话框里的字段标签。 */
-    private void formLabel(LinearLayout box, String text) {
-        TextView lb = Ui.text(this, text, Ui.T_LABEL, Ui.onSurfaceVariant(this), true);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = Ui.v(this, 16);
-        lp.bottomMargin = Ui.v(this, 6);
-        lb.setLayoutParams(lp);
-        box.addView(lb);
-    }
-
-    /** 对话框里的「标签 + 输入框」，返回输入框供调用方取值。 */
-    private EditText formField(LinearLayout box, String label, String hint, String value) {
-        formLabel(box, label);
-        EditText et = Ui.input(this, hint);
-        if (value != null && value.length() > 0) et.setText(value);
-        box.addView(et);
-        return et;
-    }
-
-    /**
-     * 落库。返回 false 表示没保存（对话框不关，用户刚填的内容还在）——
-     * 这与 Dialogs.form 的 Saver 约定配套：只有 true 才关窗。
-     */
-    private boolean saveTodo(TodoForm f) {
-        String title = f.titleField.getText().toString().trim();
-        if (title.length() == 0) {
-            Tip.error(this, "请填写任务内容");
-            return false;   // false = 不关窗，刚填的内容还在
-        }
-        Db.Todo todo = new Db.Todo();
-        todo.id = Id.gen();
-        todo.courseId = courseId;
-        todo.title = title;
-        todo.due = f.dueField.getText().toString().trim();
-        todo.priority = f.priority;
-        todo.remindAt = f.remindAt;
-        db.saveTodo(todo);
-        // 存完立刻排闹钟。等回到前台再排的话，用户设完马上杀进程或重启，
-        // 这一刻的提醒就丢了（闹钟本身也不跨重启，但没排过就更谈不上重排）。
-        Reminders.schedule(this, todo);
-        submitDialog = null;
-        renderTabs();
-        renderContent();
-        if (f.remindAt > 0 && f.remindAt <= System.currentTimeMillis()) {
-            // 存是照存，但必须说清楚：否则用户以为设上了，到点什么都不会发生
-            Tip.error(this, "已创建，但提醒时间已过，不会提醒");
-        } else {
-            Tip.success(this, "待办已创建");
-        }
-        return true;
-    }
 
     // ================== 录音 ==================
 
