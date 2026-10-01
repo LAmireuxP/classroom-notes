@@ -17,7 +17,7 @@ import java.util.List;
 public class Db extends SQLiteOpenHelper {
 
     private static final String NAME = "classroom.db";
-    private static final int VERSION = 3;
+    private static final int VERSION = 4;
 
     private static Db sInstance;
 
@@ -57,6 +57,7 @@ public class Db extends SQLiteOpenHelper {
                 "date TEXT," +
                 "content TEXT," +
                 "keypoints TEXT," +
+                "images TEXT DEFAULT ''," +
                 "pinned INTEGER DEFAULT 0," +
                 "created INTEGER DEFAULT 0," +
                 "sort INTEGER DEFAULT 0," +
@@ -91,6 +92,7 @@ public class Db extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE notes ADD COLUMN deleted_at INTEGER DEFAULT 0");
             db.execSQL("ALTER TABLE todos ADD COLUMN deleted_at INTEGER DEFAULT 0");
         }
+        if (oldV < 4) db.execSQL("ALTER TABLE notes ADD COLUMN images TEXT DEFAULT ''");
     }
 
     // ---------------- 事务 ----------------
@@ -122,6 +124,8 @@ public class Db extends SQLiteOpenHelper {
     public static class Note {
         public String id, courseId, title, date, content;
         public List<String> keyPoints = new ArrayList<String>();
+        /** 配图文件名列表（分号分隔，文件在 app 内部 note-img/ 目录下）。 */
+        public String images = "";
         public boolean pinned;
         public long created;
     }
@@ -328,7 +332,7 @@ public class Db extends SQLiteOpenHelper {
 
     public List<Note> notes(String courseId, String query) {
         List<Note> list = new ArrayList<Note>();
-        String sql = "SELECT id,course_id,title,date,content,keypoints,pinned,created FROM notes" +
+        String sql = "SELECT id,course_id,title,date,content,keypoints,images,pinned,created FROM notes" +
                 " WHERE course_id=? AND deleted_at=0";
         List<String> args = new ArrayList<String>();
         args.add(courseId);
@@ -368,7 +372,7 @@ public class Db extends SQLiteOpenHelper {
         if (q.length() == 0) return list;
         String like = "%" + q + "%";
         Cursor c = getReadableDatabase().rawQuery(
-                "SELECT n.id,n.course_id,n.title,n.date,n.content,n.keypoints,n.pinned,n.created," +
+                "SELECT n.id,n.course_id,n.title,n.date,n.content,n.keypoints,n.images,n.pinned,n.created," +
                         "c.name,c.color FROM notes n LEFT JOIN courses c ON c.id=n.course_id" +
                         " WHERE n.deleted_at=0" +
                         " AND (n.title LIKE ? OR n.content LIKE ? OR n.keypoints LIKE ?)" +
@@ -377,9 +381,9 @@ public class Db extends SQLiteOpenHelper {
         try {
             while (c.moveToNext()) {
                 NoteHit h = new NoteHit();
-                h.note = readNote(c);            // 前 8 列的顺序与 readNote 对齐
-                h.courseName = c.getString(8);
-                h.courseColor = c.getString(9);
+                h.note = readNote(c);            // 前 9 列的顺序与 readNote 对齐
+                h.courseName = c.getString(9);
+                h.courseColor = c.getString(10);
                 list.add(h);
             }
         } finally {
@@ -391,7 +395,7 @@ public class Db extends SQLiteOpenHelper {
     /** 按 id 取单条笔记；不存在返回 null。 */
     public Note note(String id) {
         Cursor c = getReadableDatabase().rawQuery(
-                "SELECT id,course_id,title,date,content,keypoints,pinned,created FROM notes" +
+                "SELECT id,course_id,title,date,content,keypoints,images,pinned,created FROM notes" +
                         " WHERE id=? AND deleted_at=0",
                 new String[]{id});
         try {
@@ -404,7 +408,7 @@ public class Db extends SQLiteOpenHelper {
 
     /**
      * 读一行笔记，按**列序号**取值，所以顺序必须和查询里那段
-     * `SELECT id,course_id,title,date,content,keypoints,pinned,created` 完全一致。
+     * `SELECT id,course_id,title,date,content,keypoints,images,pinned,created` 完全一致。
      * 以后给 notes 加字段时要四处一起改：建表、本段查询、searchNotes() 的查询、这里。
      */
     private Note readNote(Cursor c) {
@@ -415,8 +419,9 @@ public class Db extends SQLiteOpenHelper {
         n.date = c.getString(3);
         n.content = c.getString(4);
         n.keyPoints = splitString(c.getString(5));
-        n.pinned = c.getInt(6) == 1;
-        n.created = c.getLong(7);
+        n.images = c.getString(6);
+        n.pinned = c.getInt(7) == 1;
+        n.created = c.getLong(8);
         return n;
     }
 
@@ -428,6 +433,7 @@ public class Db extends SQLiteOpenHelper {
         v.put("date", n.date);
         v.put("content", n.content);
         v.put("keypoints", joinString(n.keyPoints));
+        v.put("images", n.images != null ? n.images : "");
         v.put("pinned", n.pinned ? 1 : 0);
         // 更新时不写 created（保留原创建时间），只有真要插入才带上。
         int rows = getWritableDatabase().update("notes", v, "id=?", new String[]{n.id});
@@ -458,6 +464,65 @@ public class Db extends SQLiteOpenHelper {
         reorder("notes", ids);
     }
 
+    // ---------------- 笔记配图 ----------------
+
+    /**
+     * 把一张图片从 content Uri 复制到内部存储（长边压到 1080px、JPEG 85%），
+     * 返回文件绝对路径（存进 Note.images 字段，分号分隔）。失败返回 null。
+     *
+     * 为什么要压缩：手机拍的板书照片动辄 4000×3000、5 MB+，原图直接存几天就
+     * 占满内部存储。压到 1080px 长边足够看清板书内容，文件通常 < 300 KB。
+     */
+    public String saveNoteImage(Context c, android.net.Uri uri) {
+        try {
+            java.io.File dir = new java.io.File(c.getFilesDir(), "note-img");
+            dir.mkdirs();
+            String name = System.currentTimeMillis() + "_" + (int)(Math.random() * 10000) + ".jpg";
+            java.io.File dest = new java.io.File(dir, name);
+
+            // 先量尺寸（不加载像素）
+            android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
+            opts.inJustDecodeBounds = true;
+            java.io.InputStream is = c.getContentResolver().openInputStream(uri);
+            android.graphics.BitmapFactory.decodeStream(is, null, opts);
+            if (is != null) is.close();
+
+            // 算采样倍率：让长边 ≤ 1080px
+            int maxDim = Math.max(opts.outWidth, opts.outHeight);
+            int sample = 1;
+            while (maxDim / sample > 1080) sample *= 2;
+
+            // 真解码
+            opts = new android.graphics.BitmapFactory.Options();
+            opts.inSampleSize = sample;
+            is = c.getContentResolver().openInputStream(uri);
+            android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeStream(is, null, opts);
+            if (is != null) is.close();
+            if (bmp == null) return null;
+
+            java.io.FileOutputStream fos = new java.io.FileOutputStream(dest);
+            bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, fos);
+            fos.close();
+            bmp.recycle();
+            return dest.getAbsolutePath();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 删除一张笔记配图文件。 */
+    public void deleteNoteImage(String path) {
+        if (path != null && path.length() > 0) new java.io.File(path).delete();
+    }
+
+    /** 删除一条笔记的所有配图文件（删笔记时调用）。 */
+    public void deleteAllNoteImages(String images) {
+        if (images == null || images.length() == 0) return;
+        for (String path : images.split(";")) {
+            if (path.length() > 0) new java.io.File(path).delete();
+        }
+    }
+
     /** 删除单条笔记：进回收站（可恢复），不是真删。 */
     public void deleteNote(String id) {
         softDelete("notes", id);
@@ -470,6 +535,9 @@ public class Db extends SQLiteOpenHelper {
 
     /** 彻底删除一条笔记（不可恢复）。 */
     public void purgeNote(String id) {
+        // 配图文件跟着笔记一起删——先查出 images 字段，再硬删
+        Note n = note(id);
+        if (n != null) deleteAllNoteImages(n.images);
         hardDelete("notes", id);
     }
 
@@ -786,6 +854,16 @@ public class Db extends SQLiteOpenHelper {
      */
     public void emptyTrash() {
         SQLiteDatabase db = getWritableDatabase();
+        // 配图文件跟着笔记一起删——在 DB 删除之前查出 images 字段
+        Cursor c = db.rawQuery("SELECT images FROM notes WHERE deleted_at>0 AND images!=''", null);
+        try {
+            while (c.moveToNext()) {
+                String imgs = c.getString(0);
+                if (imgs != null) for (String p : imgs.split(";")) {
+                    if (p.length() > 0) new java.io.File(p).delete();
+                }
+            }
+        } finally { c.close(); }
         db.beginTransaction();
         try {
             db.delete("notes", "deleted_at>0", null);

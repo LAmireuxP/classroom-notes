@@ -6,6 +6,8 @@ import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.os.Build;
@@ -692,6 +694,31 @@ public class CourseActivity extends BaseActivity implements Dialogs.DialogHost {
             row.addView(kpBox);
         }
 
+        // ---- 配图：展开时显示在正文与重点之后 ----
+        if (expanded && n.images != null && n.images.length() > 0) {
+            LinearLayout imgBox = Ui.column(this);
+            LinearLayout.LayoutParams ibp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            ibp.topMargin = Ui.v(this, 8);
+            ibp.leftMargin = Ui.dp(this, 17);
+            imgBox.setLayoutParams(ibp);
+            for (String path : n.images.split(";")) {
+                if (path.length() == 0) continue;
+                Bitmap bmp = decodeImageThumb(path, 720);
+                if (bmp == null) continue;
+                ImageView iv = new ImageView(this);
+                iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                iv.setAdjustViewBounds(true);
+                iv.setImageBitmap(bmp);
+                LinearLayout.LayoutParams ilp = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                ilp.bottomMargin = Ui.dp(this, 4);
+                iv.setLayoutParams(ilp);
+                imgBox.addView(iv);
+            }
+            row.addView(imgBox);
+        }
+
         // ---- 展开后的操作行（等宽分配，防溢出）----
         if (expanded) {
             LinearLayout ops = Ui.row(this);
@@ -706,6 +733,10 @@ public class CourseActivity extends BaseActivity implements Dialogs.DialogHost {
                             db.setNotePinned(n.id, !n.pinned);
                             renderContent();
                         }
+                    }));
+            ops.addView(actionCell(R.drawable.ic_share, "分享", Ui.primary(this),
+                    new Runnable() {
+                        @Override public void run() { shareNote(n); }
                     }));
             ops.addView(actionCell(R.drawable.ic_edit, "编辑", Ui.primary(this),
                     new Runnable() {
@@ -735,6 +766,35 @@ public class CourseActivity extends BaseActivity implements Dialogs.DialogHost {
             }
         });
         return row;
+    }
+
+    /** 解码一张展示图（长边压到 maxPx，避免全尺寸解码吃内存）。 */
+    private Bitmap decodeImageThumb(String path, int maxPx) {
+        BitmapFactory.Options opts = new BitmapFactory.Options();
+        opts.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(path, opts);
+        int sample = 1;
+        int maxDim = Math.max(opts.outWidth, opts.outHeight);
+        while (maxDim / sample > maxPx) sample *= 2;
+        opts = new BitmapFactory.Options();
+        opts.inSampleSize = sample;
+        return BitmapFactory.decodeFile(path, opts);
+    }
+
+    /** 用系统分享面板把笔记文本发出去（微信 / QQ / 蓝牙 / 剪贴板……）。 */
+    private void shareNote(Db.Note n) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(Ui.nz(n.title)).append("\n");
+        if (n.date != null && n.date.length() > 0) sb.append(n.date).append("\n");
+        sb.append("\n").append(Ui.nz(n.content));
+        if (n.keyPoints != null && !n.keyPoints.isEmpty()) {
+            sb.append("\n\n重点：\n");
+            for (String k : n.keyPoints) sb.append("· ").append(k).append("\n");
+        }
+        Intent send = new Intent(Intent.ACTION_SEND);
+        send.setType("text/plain");
+        send.putExtra(Intent.EXTRA_TEXT, sb.toString());
+        startActivity(Intent.createChooser(send, "分享笔记"));
     }
 
         /**
