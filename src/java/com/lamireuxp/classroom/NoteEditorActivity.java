@@ -67,23 +67,25 @@ public class NoteEditorActivity extends BaseSettingsActivity {
         dateField = labeledField("日期", Dates.today(),
                 state != null ? Ui.nz(state.date) : Dates.today());
 
-        // 笔记内容：多行
+        // 笔记内容：多行，撑满剩余空间——全屏页面里正文是主体，给足书写面积
         formLabel(body, "笔记内容");
         contentField = Ui.input(this, "课堂内容、理解与疑问…");
         contentField.setSingleLine(false);
         contentField.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
-        contentField.setMinLines(5);
-        contentField.setMaxLines(20);
+        contentField.setMinLines(8);
+        // 用 weight=1 让正文占满滚动容器里标题/日期/重点/保存按钮之外的所有空间
+        contentField.setLayoutParams(new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         if (state != null && state.content != null) contentField.setText(state.content);
         body.addView(contentField);
 
-        // 重点（每行一条）：多行
+        // 重点（每行一条）：多行，固定高度（比正文小，它是附属清单不是主体）
         formLabel(body, "重点（每行一条）");
         keyPointsField = Ui.input(this, "每行一条重点");
         keyPointsField.setSingleLine(false);
         keyPointsField.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
         keyPointsField.setMinLines(3);
-        keyPointsField.setMaxLines(15);
+        keyPointsField.setMaxLines(8);
         if (state != null && state.keyPoints != null) {
             keyPointsField.setText(Db.joinString(state.keyPoints));
         }

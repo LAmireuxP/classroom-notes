@@ -25,14 +25,13 @@ public class TodoEditorActivity extends BaseSettingsActivity {
     private Db db;
     private String courseId;
 
-    /** 表单状态：优先级 / 提醒的选择会触发 reapplyTheme 重建表单，已填的值要先捞回这里。 */
+    /** 表单状态：优先级 / 提醒的选择会触发重建表单，已填的值要先捞回这里。 */
     private static final class Form {
         String title = "";
         String due = Dates.today();
         String priority = "medium";
         long remindAt;
         EditText titleField;
-        EditText dueField;
     }
 
     private final Form form = new Form();
@@ -54,37 +53,39 @@ public class TodoEditorActivity extends BaseSettingsActivity {
     /** 换主题重建前先把输入框里的值捞回 form——输入到一半的内容不能丢。 */
     protected void onRebuildUi() {
         if (form.titleField != null) form.title = form.titleField.getText().toString();
-        if (form.dueField != null) form.due = form.dueField.getText().toString();
         super.onRebuildUi();
     }
 
     @Override
     protected void fillBody(LinearLayout body) {
         form.titleField = labeledField("任务内容", "完成第三章习题", form.title);
-        form.dueField = labeledField("截止日期", Dates.today(), form.due);
 
-        // 优先级与提醒放在一个独立的容器里——选了之后只重建这个容器，
-        // 不重建整页（重建整页会让刚填的标题/日期丢焦点）
+        // 截止日期 / 优先级 / 提醒都是「点选」而非手输——放在一个独立容器里，
+        // 选了之后只重建这个容器，不重建整页（重建整页会让刚填的标题丢焦点）
         formBody = Ui.column(this);
         LinearLayout.LayoutParams fbp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         fbp.topMargin = Ui.v(this, 8);
         formBody.setLayoutParams(fbp);
         body.addView(formBody);
-        renderPriorityAndReminder();
+        renderSelectors();
 
         body.addView(saveButton("保存", new Runnable() {
             @Override public void run() { save(); }
         }));
     }
 
-    /** 优先级分段 + 提醒行。选了优先级或提醒后只重建这一块。 */
-    private void renderPriorityAndReminder() {
+    /** 截止日期 + 优先级分段 + 提醒行。选了任一项后只重建这一块。 */
+    private void renderSelectors() {
         // 先把 EditText 里的值捞回 form（重建会销毁旧 EditText）
         if (form.titleField != null) form.title = form.titleField.getText().toString();
-        if (form.dueField != null) form.due = form.dueField.getText().toString();
 
         formBody.removeAllViews();
+
+        // 截止日期：点选而非手输——手输日期格式太多写法，敲错会存进一个无效值。
+        // 提醒本来就用日期选择器，截止日期没理由不用。
+        formLabel(formBody, "截止日期");
+        formBody.addView(dueRow());
 
         // 优先级
         formLabel(formBody, "优先级");
@@ -96,13 +97,51 @@ public class TodoEditorActivity extends BaseSettingsActivity {
                         String key = Db.PRIORITY_KEYS[index];
                         if (key.equals(form.priority)) return;
                         form.priority = key;
-                        renderPriorityAndReminder();
+                        renderSelectors();
                     }
                 }));
 
         // 提醒
         formLabel(formBody, "提醒");
         formBody.addView(remindRow());
+    }
+
+    /** 截止日期行：点选打开日期选择器（和提醒用同一套交互）。 */
+    private View dueRow() {
+        LinearLayout row = Ui.row(this);
+        int ph = Ui.dp(this, 14), pv = Ui.v(this, 11);
+        row.setPadding(ph, pv, ph, pv);
+        row.setMinimumHeight(Ui.vMin(this, 48));
+        row.setBackground(Ui.ripple(this, Ui.surfaceContainer(this), Ui.R_S));
+        row.setClickable(true);
+        row.setFocusable(true);
+
+        TextView tv = Ui.text(this, "截止　" + Dates.shortDate(form.due),
+                Ui.T_BODY + 1, Ui.onSurface(this), false);
+        tv.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(tv);
+
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { pickDueDate(); }
+        });
+        return row;
+    }
+
+    /** 日期选择器——只选日期，不选时间（截止日期不像提醒需要精确到分钟）。 */
+    private void pickDueDate() {
+        // form.due 是 "YYYY-MM-DD"，拆开给 DatePicker 当初始值
+        String[] parts = form.due.split("-");
+        int y = parts.length >= 1 ? Integer.parseInt(parts[0]) : 2026;
+        int m = parts.length >= 2 ? Integer.parseInt(parts[1]) - 1 : 0;  // 0-indexed
+        int d = parts.length >= 3 ? Integer.parseInt(parts[2]) : 1;
+        new android.app.DatePickerDialog(this,
+                new android.app.DatePickerDialog.OnDateSetListener() {
+                    @Override public void onDateSet(android.widget.DatePicker dp,
+                                                    int yy, int mm, int dd) {
+                        form.due = String.format("%04d-%02d-%02d", yy, mm + 1, dd);
+                        renderSelectors();
+                    }
+                }, y, m, d).show();
     }
 
     /** 提醒行：没设时是「不提醒（点这里设一个）」，设了就显示时刻 + 清除按钮。 */
@@ -127,7 +166,7 @@ public class TodoEditorActivity extends BaseSettingsActivity {
             clear.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) {
                     form.remindAt = 0;
-                    renderPriorityAndReminder();
+                    renderSelectors();
                 }
             });
             row.addView(clear);
@@ -156,7 +195,7 @@ public class TodoEditorActivity extends BaseSettingsActivity {
                                         if (form.remindAt > System.currentTimeMillis()) {
                                             ensureNotifyPermission();
                                         }
-                                        renderPriorityAndReminder();
+                                        renderSelectors();
                                     }
                                 }, p[3], p[4], true).show();
                     }
@@ -192,7 +231,7 @@ public class TodoEditorActivity extends BaseSettingsActivity {
         todo.id = Id.gen();
         todo.courseId = courseId;
         todo.title = title;
-        todo.due = form.dueField.getText().toString().trim();
+        todo.due = form.due;
         todo.priority = form.priority;
         todo.remindAt = form.remindAt;
         db.saveTodo(todo);
