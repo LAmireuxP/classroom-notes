@@ -1,8 +1,10 @@
 package com.lamireuxp.classroom;
 
 import android.os.Bundle;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
+import android.widget.TextView;
 import android.widget.LinearLayout;
 
 /**
@@ -23,7 +25,7 @@ public class NoteEditorActivity extends BaseSettingsActivity {
     private Db.Note editing;
     /** 内存状态：新建时是空 Note，编辑时是原数据的副本。fillBody 从这里填字段。 */
     private Db.Note state;
-    private EditText titleField, dateField, contentField, keyPointsField;
+    private EditText titleField, contentField, keyPointsField;
 
     @Override
     protected void onCreateUi(Bundle b) {
@@ -54,7 +56,6 @@ public class NoteEditorActivity extends BaseSettingsActivity {
     private void capture() {
         if (titleField == null) return;
         state.title = titleField.getText().toString();
-        state.date = dateField.getText().toString();
         state.content = contentField.getText().toString();
         state.keyPoints = Db.splitString(keyPointsField.getText().toString());
     }
@@ -64,8 +65,9 @@ public class NoteEditorActivity extends BaseSettingsActivity {
         titleField = labeledField("标题", "第一章 极限与连续",
                 state != null ? Ui.nz(state.title) : "");
 
-        dateField = labeledField("日期", Dates.today(),
-                state != null ? Ui.nz(state.date) : Dates.today());
+        // 日期：点选而非手输——手输日期格式太多写法，敲错会让 shortDate 解析出错
+        formLabel(body, "日期");
+        body.addView(dateRow());
 
         // 笔记内容：多行，撑满剩余空间——全屏页面里正文是主体，给足书写面积
         formLabel(body, "笔记内容");
@@ -109,6 +111,44 @@ public class NoteEditorActivity extends BaseSettingsActivity {
         body.addView(lb);
     }
 
+    /** 日期行：点选打开日期选择器（与待办编辑页同一套交互）。 */
+    private View dateRow() {
+        LinearLayout row = Ui.row(this);
+        int ph = Ui.dp(this, 14), pv = Ui.v(this, 11);
+        row.setPadding(ph, pv, ph, pv);
+        row.setMinimumHeight(Ui.vMin(this, 48));
+        row.setBackground(Ui.ripple(this, Ui.surfaceContainer(this), Ui.R_S));
+        row.setClickable(true);
+        row.setFocusable(true);
+
+        TextView tv = Ui.text(this, Dates.shortDate(state != null ? Ui.nz(state.date) : Dates.today()),
+                Ui.T_BODY + 1, Ui.onSurface(this), false);
+        tv.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(tv);
+
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { pickDate(); }
+        });
+        return row;
+    }
+
+    /** 日期选择器——只选日期。 */
+    private void pickDate() {
+        String d = state != null ? Ui.nz(state.date) : Dates.today();
+        String[] parts = d.split("-");
+        int y = parts.length >= 1 ? Integer.parseInt(parts[0]) : 2026;
+        int m = parts.length >= 2 ? Integer.parseInt(parts[1]) - 1 : 0;
+        int day = parts.length >= 3 ? Integer.parseInt(parts[2]) : 1;
+        new android.app.DatePickerDialog(this,
+                new android.app.DatePickerDialog.OnDateSetListener() {
+                    @Override public void onDateSet(android.widget.DatePicker dp,
+                                                    int yy, int mm, int dd) {
+                        state.date = String.format("%04d-%02d-%02d", yy, mm + 1, dd);
+                        reapplyTheme();   // 重建以刷新日期行的显示
+                    }
+                }, y, m, day).show();
+    }
+
     /** 保存：校验标题 → 组装 Note → 落库 → 提示 → finish。 */
     private void save() {
         String title = titleField.getText().toString().trim();
@@ -119,8 +159,7 @@ public class NoteEditorActivity extends BaseSettingsActivity {
         Db.Note n = editing != null ? editing : new Db.Note();
         n.courseId = courseId;
         n.title = title;
-        String d = dateField.getText().toString().trim();
-        n.date = d.length() == 0 ? Dates.today() : d;
+        n.date = state.date;
         n.content = contentField.getText().toString().trim();
         n.keyPoints = Db.splitString(keyPointsField.getText().toString());
         if (editing == null) n.id = Id.gen();
