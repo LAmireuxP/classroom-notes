@@ -335,6 +335,44 @@ public class MainActivity extends BaseActivity implements Dialogs.DialogHost {
                     }
                 });
 
+        // 已归档课程的入口，压在课程列表末尾。只在真的有归档课时出现——
+        // 没归档过的人不需要知道有这个概念；看正课的视线自然往下就能找到
+        final int archivedN = db.archivedCount();
+        if (archivedN > 0) {
+            LinearLayout ar = Ui.row(this);
+            ar.setGravity(Gravity.CENTER_VERTICAL);
+            int ap = Ui.dp(this, 16);
+            ar.setPadding(ap, Ui.v(this, 12), ap, Ui.v(this, 12));
+            ar.setBackground(Ui.ripple(this, Ui.surfaceContainer(this), Ui.R_M));
+            ar.setClickable(true);
+            ar.setFocusable(true);
+            Ui.pressScale(ar);
+            LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            alp.topMargin = Ui.dp(this, 10);
+            ar.setLayoutParams(alp);
+            ar.addView(Icons.icon(this, R.drawable.ic_archive, Ui.onSurfaceVariant(this), 18));
+            TextView arTv = Ui.text(this, "已归档课程 · " + archivedN,
+                    Ui.T_BODY, Ui.onSurfaceVariant(this), false);
+            LinearLayout.LayoutParams atp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            atp.leftMargin = Ui.dp(this, 12);
+            arTv.setLayoutParams(atp);
+            ar.addView(arTv);
+            ar.addView(Ui.spacer(this));
+            ImageView chevron = Icons.icon(this, R.drawable.ic_chevron_down,
+                    Ui.onSurfaceVariant(this), 16);
+            chevron.setRotation(-90f);
+            ar.addView(chevron);
+            ar.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    startActivity(new Intent(MainActivity.this, ArchivedCoursesActivity.class));
+                }
+            });
+            // 不进 DragSort 的 rows——它是入口行不是课程卡，不参与拖动排序
+            listBox.addView(ar);
+        }
+
         // 列表浮入：淡入 + 上移，按序号错峰，整体从「拍上来」变成「浮上来」
         Ui.animateListIn(listBox);
     }
@@ -615,6 +653,9 @@ public class MainActivity extends BaseActivity implements Dialogs.DialogHost {
         box.addView(menuRow(R.drawable.ic_edit, "编辑课程", new Runnable() {
             @Override public void run() { courseDialog(c); }
         }));
+        box.addView(menuRow(R.drawable.ic_archive, "归档课程", new Runnable() {
+            @Override public void run() { archiveCourse(c); }
+        }));
         box.addView(menuRow(R.drawable.ic_trash, "删除课程", Ui.error(this), new Runnable() {
             @Override public void run() { confirmDeleteCourse(c); }
         }));
@@ -690,6 +731,18 @@ public class MainActivity extends BaseActivity implements Dialogs.DialogHost {
     private void closeSubmit() {
         if (submitDialog != null) submitDialog.dismiss();
         submitDialog = null;
+    }
+
+    /**
+     * 归档课程：上完的课退出首页，数据原样保留，随时从首页底部「已归档课程」恢复。
+     * 不弹确认——归档无损且随时可逆，确认框只会让用户平白犹豫。
+     * 提醒跟着撤：归档课的待办不再响；恢复归档时 rescheduleAll 会把还活着的补回来。
+     */
+    private void archiveCourse(final Db.Course c) {
+        Reminders.cancelCourse(this, c.id);
+        db.archiveCourse(c.id);
+        refresh();
+        Tip.success(this, "已归档「" + c.name + "」");
     }
 
     /**

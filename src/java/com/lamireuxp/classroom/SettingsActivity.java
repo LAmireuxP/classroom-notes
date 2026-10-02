@@ -43,13 +43,13 @@ public class SettingsActivity extends BaseSettingsActivity {
         body.addView(sectionTitle("数据"));
         body.addView(navRow(R.drawable.ic_trash, "回收站", trashSubtitle(),
                 TrashActivity.class));
-        body.addView(actionRow(R.drawable.ic_export, "导出 JSON 备份", new Runnable() {
+        body.addView(actionRow(R.drawable.ic_export, "导出备份", new Runnable() {
             @Override public void run() { doExportJson(); }
         }));
         body.addView(actionRow(R.drawable.ic_md, "导出 Markdown", new Runnable() {
             @Override public void run() { doExportMd(); }
         }));
-        body.addView(actionRow(R.drawable.ic_import, "导入 JSON 备份", new Runnable() {
+        body.addView(actionRow(R.drawable.ic_import, "导入备份", new Runnable() {
             @Override public void run() { doImportJson(); }
         }));
     }
@@ -155,17 +155,18 @@ public class SettingsActivity extends BaseSettingsActivity {
     // ================== 导入导出 ==================
 
     /**
-     * 导出 JSON：先把内容生成好放进 pendingExport，再用 SAF 让用户选保存位置。
-     * 顺序不能反——SAF 返回时数据已经准备好，直接写；先选位置再生成的话，
+     * 导出备份（zip）：先把 JSON 生成好放进 pendingExport，再用 SAF 让用户选保存位置。
+     * 顺序不能反——SAF 返回时数据已经准备好，直接打包写；先选位置再生成的话，
      * 用户在文件选择器里等的那几秒是白等的，而且失败时还得回头清理空文件。
+     * zip 里含 data.json + 被引用的配图文件（见 Backup.writeZip）。
      */
     private void doExportJson() {
         try {
             pendingExport = Backup.exportJson(this);
             Intent it = new Intent(Intent.ACTION_CREATE_DOCUMENT);
             it.addCategory(Intent.CATEGORY_OPENABLE);
-            it.setType("application/json");
-            it.putExtra(Intent.EXTRA_TITLE, "classroom-backup-" + Dates.today() + ".json");
+            it.setType("application/zip");
+            it.putExtra(Intent.EXTRA_TITLE, "classroom-backup-" + Dates.today() + ".zip");
             startActivityForResult(it, REQ_EXPORT_JSON);
         } catch (Throwable e) {
             Tip.error(this, "导出失败：" + e.getMessage());
@@ -191,9 +192,10 @@ public class SettingsActivity extends BaseSettingsActivity {
     }
 
     /**
-     * 导入 JSON：只负责选文件，真正的解析与替换在 onActivityResult 里（要先确认）。
-     * 类型用 * / * 而不是 application/json：各家文件管理器对 json 的 MIME 判定不一致，
-     * 限定类型会让部分设备上刚下载的备份文件变灰选不中。
+     * 导入备份：只负责选文件，真正的解析与替换在 onActivityResult 里（要先确认）。
+     * 类型用 * / *：备份是 zip 但旧版是 json，且各家文件管理器对 MIME 判定不一致，
+     * 限定类型会让部分设备上刚下载的备份文件变灰选不中。Backup.importBackup
+     * 按文件头判断格式，zip 与旧 json 都能导。
      */
     private void doImportJson() {
         Intent it = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -204,7 +206,8 @@ public class SettingsActivity extends BaseSettingsActivity {
 
     @Override
     /**
-     * SAF 回调：导出就直接写，导入要先读文本、弹确认框（导入是覆盖式清空重建）。
+     * SAF 回调：导出直接写（zip 备份走 writeZip、Markdown 走 writeText），
+     * 导入弹确认框（覆盖式清空重建，含配图）。Backup.importBackup 按文件头判断格式。
      * 用户取消（result != RESULT_OK）时清掉 pendingExport，免得下次导出写进旧内容。
      */
     protected void onActivityResult(int req, int result, Intent data) {
@@ -213,20 +216,25 @@ public class SettingsActivity extends BaseSettingsActivity {
             pendingExport = null;
             return;
         }
-        android.net.Uri uri = data.getData();
+        final android.net.Uri uri = data.getData();
         try {
-            if (req == REQ_EXPORT_JSON || req == REQ_EXPORT_MD) {
+            if (req == REQ_EXPORT_JSON) {
+                // zip 备份：data.json + 被引用的配图文件
+                Backup.writeZip(this, uri, pendingExport);
+                pendingExport = null;
+                Tip.success(this, "已导出到所选位置");
+            } else if (req == REQ_EXPORT_MD) {
+                // Markdown 仍是纯文本
                 Backup.writeText(this, uri, pendingExport);
                 pendingExport = null;
                 Tip.success(this, "已导出到所选位置");
             } else if (req == REQ_IMPORT_JSON) {
-                final String text = Backup.readText(this, uri);
                 Dialogs.confirm(this, "导入备份",
-                        "将清空当前所有数据并导入所选备份，确定继续？",
+                        "将清空当前所有数据并导入所选备份（含配图），确定继续？",
                         "导入", new Runnable() {
                             @Override public void run() {
                                 try {
-                                    int n = Backup.importJson(SettingsActivity.this, text);
+                                    int n = Backup.importBackup(SettingsActivity.this, uri);
                                     // 导入是整体替换：旧的闹钟全部作废，新的提醒要重新排。
                                     // 不重排的话，导入进来的提醒时间在库里躺着，却一个都不会响。
                                     Reminders.rescheduleAll(SettingsActivity.this);

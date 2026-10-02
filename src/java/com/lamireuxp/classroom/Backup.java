@@ -6,10 +6,19 @@ import android.net.Uri;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
 
 /**
  * 备份：JSON 导出/导入。
@@ -36,12 +45,14 @@ public final class Backup {
         root.put("format", FORMAT);
         root.put("exportedAt", System.currentTimeMillis());
         JSONArray courses = new JSONArray();
-        for (Db.Course course : db.courses()) {
+        // allCourses：含已归档的课。归档课是历史数据，备份丢掉它们等于静默丽数据。
+        for (Db.Course course : db.allCourses()) {
             JSONObject co = new JSONObject();
             co.put("id", course.id);
             co.put("name", nz(course.name));
             co.put("teacher", nz(course.teacher));
             co.put("color", nz(course.color));
+            co.put("archived", course.archived);
 
             JSONArray notes = new JSONArray();
             for (Db.Note n : db.notes(course.id, null)) {
@@ -55,6 +66,9 @@ public final class Backup {
                 JSONArray kp = new JSONArray();
                 for (String k : n.keyPoints) kp.put(k);
                 o.put("keyPoints", kp);
+                // 配图文件名（相对名，不带路径）——文件本身打进 zip，导入时拼当前设备路径。
+                // 旧版备份没这个字段，导入时 optString 返回空，笔记无配图，向后兼容。
+                o.put("images", imageBasenames(n.images));
                 notes.put(o);
             }
             co.put("notes", notes);
@@ -102,7 +116,7 @@ public final class Backup {
         JSONArray courses = root.optJSONArray("courses");
         if (courses == null) throw new Exception("文件格式不正确");
 
-        Parsed parsed = parse(courses);
+        Parsed parsed = parse(c, courses);
         // 清空 + 重建整个交给 replaceAll：它自己开一个事务，内部用预编译语句批量写。
         // 不再逐条查存在性，也不再出现「外层事务里套内层事务」——
         // 那样一旦内层失败只回滚内层，外层照样提交，会留下半新半旧的库。
@@ -121,7 +135,7 @@ public final class Backup {
      * 解析课程 / 笔记 / 待办。字段缺失一律取默认值——备份来自哪个版本都尽量把数据救回来；
      * 只有结构本身不对（数组里塞的不是对象）才报错，那种文件继续导入没有意义。
      */
-    private static Parsed parse(JSONArray courses) throws Exception {
+    private static Parsed parse(Context c, JSONArray courses) throws Exception {
         Parsed p = new Parsed();
         for (int i = 0; i < courses.length(); i++) {
             JSONObject co = courses.optJSONObject(i);
@@ -132,6 +146,8 @@ public final class Backup {
             course.name = co.optString("name", "未命名课程");
             course.teacher = co.optString("teacher", "");
             course.color = co.optString("color", "#4f5bff");
+            // 归档状态跟着备份走；旧备份没这个字段，默认不归档
+            course.archived = co.optBoolean("archived", false);
             p.courses.add(course);
 
             JSONArray notes = co.optJSONArray("notes");
@@ -146,6 +162,10 @@ public final class Backup {
                 n.content = o.optString("content", "");
                 n.pinned = o.optBoolean("pinned", false);
                 n.created = o.optLong("created", System.currentTimeMillis());
+                // images：备份里存的是相对文件名，导入时拼当前设备的 note-img 绝对路径。
+                // 旧版备份没这个字段，optString 返回空——笔记无配图，向后兼容。
+                n.images = resolveImagePaths(new File(c.getFilesDir(), "note-img"),
+                        o.optString("images", ""));
                 JSONArray kp = o.optJSONArray("keyPoints");
                 for (int k = 0; kp != null && k < kp.length(); k++) {
                     n.keyPoints.add(kp.optString(k, ""));
@@ -183,7 +203,8 @@ public final class Backup {
         Db db = Db.get(c);
         StringBuilder sb = new StringBuilder();
         String[] label = {"低", "中", "高"};
-        for (Db.Course course : db.courses()) {
+        // 含归档课：Markdown 是给人看的完整学习记录，归档的历史课也在内
+        for (Db.Course course : db.allCourses()) {
             sb.append("# ").append(nz(course.name)).append("\n\n");
             if (course.teacher != null && course.teacher.length() > 0) {
                 sb.append("> 授课教师：").append(course.teacher).append("\n\n");
@@ -245,6 +266,177 @@ public final class Backup {
         } finally {
             in.close();
         }
+    }
+
+    // ---------------- ZIP 备份（含配图） ----------------
+
+    /**
+     * 把 JSON + 被引用的配图文件打进一个 zip，写到 uri 指向的位置。
+     *
+     * 1.6 之前的备份是纯 .json 文本，配图（文件，不在 DB 里）不包含——换机/重装后配图丢失。
+     * 1.7 起改成 zip：内部 data.json + note-img/ 下被引用的图片文件。
+     * zip 里的 data.json 仍是 classroom-v2 格式，手动解出来仍能与网页版互通。
+     *
+     * 只打包「被某条笔记引用」的图片，孤立文件（笔记已删但文件残留）不带——
+     * 既缩小体积，也避免导入时复活垃圾。
+     */
+    public static void writeZip(Context c, Uri uri, String json) throws Exception {
+        Set<String> imageNames = collectImageNames(new JSONObject(json));
+
+        OutputStream os = c.getContentResolver().openOutputStream(uri, "wt");
+        if (os == null) throw new Exception("无法写入该位置");
+        ZipOutputStream zos = new ZipOutputStream(os);
+        try {
+            ZipEntry data = new ZipEntry("data.json");
+            zos.putNextEntry(data);
+            zos.write(json.getBytes("UTF-8"));
+            zos.closeEntry();
+
+            File imgDir = new File(c.getFilesDir(), "note-img");
+            byte[] buf = new byte[8192];
+            for (String name : imageNames) {
+                File f = new File(imgDir, name);
+                if (!f.exists()) continue;   // 文件已不在（被删/换机），跳过不报错
+                ZipEntry ie = new ZipEntry("note-img/" + name);
+                zos.putNextEntry(ie);
+                FileInputStream fis = new FileInputStream(f);
+                try {
+                    int n;
+                    while ((n = fis.read(buf)) > 0) zos.write(buf, 0, n);
+                } finally {
+                    fis.close();
+                }
+                zos.closeEntry();
+            }
+        } finally {
+            zos.close();
+        }
+    }
+
+    /**
+     * 统一导入入口：按文件头判断是 zip 还是旧版 JSON。
+     * zip 头是 "PK"（0x50 0x4B），JSON 以 '{' 开头。
+     * 两种都能导入——新 zip 含配图，旧 JSON 无配图但数据完整。
+     */
+    public static int importBackup(Context c, Uri uri) throws Exception {
+        InputStream peek = c.getContentResolver().openInputStream(uri);
+        if (peek == null) throw new Exception("无法读取该文件");
+        byte[] head = new byte[2];
+        int read;
+        try {
+            read = peek.read(head);
+        } finally {
+            peek.close();
+        }
+        if (read >= 2 && head[0] == 'P' && head[1] == 'K') {
+            return importZip(c, uri);
+        }
+        return importJson(c, readText(c, uri));
+    }
+
+    /**
+     * 解 zip 备份：先解配图文件到 note-img/，再解 data.json 走 importJson。
+     * 图片要先落盘——importJson → parse 拼绝对路径时文件得在位。
+     */
+    private static int importZip(Context c, Uri uri) throws Exception {
+        InputStream in = c.getContentResolver().openInputStream(uri);
+        if (in == null) throw new Exception("无法读取该文件");
+        File imgDir = new File(c.getFilesDir(), "note-img");
+        imgDir.mkdirs();
+        ZipInputStream zis = new ZipInputStream(in);
+        String json = null;
+        byte[] buf = new byte[8192];
+        try {
+            ZipEntry e;
+            while ((e = zis.getNextEntry()) != null) {
+                String name = e.getName();
+                if (name.equals("data.json")) {
+                    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                    int n;
+                    while ((n = zis.read(buf)) > 0) bos.write(buf, 0, n);
+                    json = new String(bos.toByteArray(), "UTF-8");
+                } else if (name.startsWith("note-img/")) {
+                    // 防路径穿越：只取 basename，不接受 ../ 之类
+                    String fname = name.substring("note-img/".length());
+                    int slash = fname.lastIndexOf('/');
+                    if (slash >= 0) fname = fname.substring(slash + 1);
+                    if (fname.length() == 0 || fname.contains("..")) {
+                        zis.closeEntry();
+                        continue;
+                    }
+                    File f = new File(imgDir, fname);
+                    FileOutputStream fos = new FileOutputStream(f);
+                    try {
+                        int n;
+                        while ((n = zis.read(buf)) > 0) fos.write(buf, 0, n);
+                    } finally {
+                        fos.close();
+                    }
+                }
+                zis.closeEntry();
+            }
+        } finally {
+            zis.close();
+        }
+        if (json == null) throw new Exception("备份包里没有 data.json");
+        return importJson(c, json);
+    }
+
+    // ---------------- 配图文件名转换 ----------------
+
+    /** 把 Note.images（绝对路径，分号分隔）转成相对文件名（basename），用于导出。 */
+    private static String imageBasenames(String images) {
+        if (images == null || images.length() == 0) return "";
+        StringBuilder sb = new StringBuilder();
+        for (String p : images.split(";")) {
+            if (p.length() == 0) continue;
+            int slash = p.lastIndexOf('/');
+            String name = slash >= 0 ? p.substring(slash + 1) : p;
+            if (sb.length() > 0) sb.append(";");
+            sb.append(name);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 把备份里的 images（相对文件名，分号分隔）拼成当前设备的绝对路径，用于导入。
+     * 已经是绝对路径的（旧格式或外部写入）原样保留。
+     */
+    private static String resolveImagePaths(File imgDir, String images) {
+        if (images == null || images.length() == 0) return "";
+        String dir = imgDir.getAbsolutePath();
+        StringBuilder sb = new StringBuilder();
+        for (String name : images.split(";")) {
+            if (name.length() == 0) continue;
+            String abs = name.startsWith("/") ? name : (dir + "/" + name);
+            if (sb.length() > 0) sb.append(";");
+            sb.append(abs);
+        }
+        return sb.toString();
+    }
+
+    /** 从导出的 JSON 里收集所有被引用的配图文件名（basename），writeZip 只打包这些。 */
+    private static Set<String> collectImageNames(JSONObject root) throws Exception {
+        Set<String> names = new HashSet<String>();
+        JSONArray courses = root.optJSONArray("courses");
+        if (courses == null) return names;
+        for (int i = 0; i < courses.length(); i++) {
+            JSONObject co = courses.optJSONObject(i);
+            if (co == null) continue;
+            JSONArray notes = co.optJSONArray("notes");
+            for (int j = 0; notes != null && j < notes.length(); j++) {
+                JSONObject n = notes.optJSONObject(j);
+                if (n == null) continue;
+                String imgs = n.optString("images", "");
+                if (imgs.length() == 0) continue;
+                for (String p : imgs.split(";")) {
+                    int slash = p.lastIndexOf('/');
+                    String name = slash >= 0 ? p.substring(slash + 1) : p;
+                    if (name.length() > 0) names.add(name);
+                }
+            }
+        }
+        return names;
     }
 
     /** null 安全取字符串（导出时字段可能为空）。 */

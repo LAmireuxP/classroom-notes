@@ -17,7 +17,7 @@ import java.util.List;
 public class Db extends SQLiteOpenHelper {
 
     private static final String NAME = "classroom.db";
-    private static final int VERSION = 4;
+    private static final int VERSION = 5;
 
     private static Db sInstance;
 
@@ -43,13 +43,16 @@ public class Db extends SQLiteOpenHelper {
         // deleted_at：软删除标记，0 = 正常，非 0 = 已在回收站（值是删掉的时刻）。
         // 所有「正常」查询都要带 deleted_at=0，具体见各查询；删除只写这个字段而不是 DELETE，
         // 所以「误删一整门课」是可以救回来的——这是这个字段存在的唯一理由。
+        // archived：归档标记，0 = 正常，1 = 已归档（上完的课）。归档课数据完整但
+        // 不进首页列表/搜索/统计/全部待办/提醒；可恢复。与 deleted_at 正交。
         db.execSQL("CREATE TABLE courses(" +
                 "id TEXT PRIMARY KEY," +
                 "name TEXT NOT NULL," +
                 "teacher TEXT," +
                 "color TEXT," +
                 "sort INTEGER DEFAULT 0," +
-                "deleted_at INTEGER DEFAULT 0)");
+                "deleted_at INTEGER DEFAULT 0," +
+                "archived INTEGER DEFAULT 0)");
         db.execSQL("CREATE TABLE notes(" +
                 "id TEXT PRIMARY KEY," +
                 "course_id TEXT NOT NULL," +
@@ -84,6 +87,8 @@ public class Db extends SQLiteOpenHelper {
      *
      * v2：待办加 remind_at（提醒时间，epoch 毫秒，0 = 不提醒）。
      * v3：三张表加 deleted_at（软删除标记，0 = 正常；非 0 = 在回收站）。
+     * v4：笔记加 images（配图文件名，分号分隔）。
+     * v5：课程加 archived（归档标记，0 = 正常；1 = 已归档）。
      */
     public void onUpgrade(SQLiteDatabase db, int oldV, int newV) {
         if (oldV < 2) db.execSQL("ALTER TABLE todos ADD COLUMN remind_at INTEGER DEFAULT 0");
@@ -93,6 +98,7 @@ public class Db extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE todos ADD COLUMN deleted_at INTEGER DEFAULT 0");
         }
         if (oldV < 4) db.execSQL("ALTER TABLE notes ADD COLUMN images TEXT DEFAULT ''");
+        if (oldV < 5) db.execSQL("ALTER TABLE courses ADD COLUMN archived INTEGER DEFAULT 0");
     }
 
     // ---------------- 事务 ----------------
@@ -119,6 +125,8 @@ public class Db extends SQLiteOpenHelper {
     public static class Course {
         public String id, name, teacher, color;
         public int noteCount, todoCount, doneCount;
+        /** 是否已归档（上完的课）。归档课数据完整但不进活跃视图。 */
+        public boolean archived;
     }
 
     public static class Note {
@@ -159,36 +167,81 @@ public class Db extends SQLiteOpenHelper {
 
     // ---------------- 课程 ----------------
 
+    /**
+     * 首页的课程列表：只含**未归档**的课程（已归档的见 archivedCourses）。
+     * 三个查询（courses/allCourses/archivedCourses）共用同一个 SELECT 结构与
+     * readCourse——列一多各写各的迟早对不齐。
+     */
     public List<Course> courses() {
         List<Course> list = new ArrayList<Course>();
-        Cursor c = getReadableDatabase().rawQuery(
-                "SELECT c.id,c.name,c.teacher,c.color," +
-                        "(SELECT COUNT(*) FROM notes n WHERE n.course_id=c.id AND n.deleted_at=0)," +
-                        "(SELECT COUNT(*) FROM todos t WHERE t.course_id=c.id AND t.deleted_at=0)," +
-                        "(SELECT COUNT(*) FROM todos t WHERE t.course_id=c.id AND t.deleted_at=0 AND t.completed=1) " +
-                        "FROM courses c WHERE c.deleted_at=0 ORDER BY c.sort ASC", null);
+        Cursor c = getReadableDatabase().rawQuery(courseListSql("c.archived=0"), null);
         try {
-            while (c.moveToNext()) {
-                Course x = new Course();
-                x.id = c.getString(0);
-                x.name = c.getString(1);
-                x.teacher = c.getString(2);
-                x.color = c.getString(3);
-                x.noteCount = c.getInt(4);
-                x.todoCount = c.getInt(5);
-                x.doneCount = c.getInt(6);
-                list.add(x);
-            }
+            while (c.moveToNext()) list.add(readCourse(c));
         } finally {
             c.close();
         }
         return list;
     }
 
-    /** 按 id 取单门课程；不存在返回 null（调用方要判空）。 */
+    /**
+     * 全部未删的课程，**含已归档**。备份与 Markdown 导出走这条——
+     * 归档的课是历史数据，备份丢掉它们等于静默丽数据。
+     */
+    public List<Course> allCourses() {
+        List<Course> list = new ArrayList<Course>();
+        Cursor c = getReadableDatabase().rawQuery(courseListSql("c.deleted_at=0"), null);
+        try {
+            while (c.moveToNext()) list.add(readCourse(c));
+        } finally {
+            c.close();
+        }
+        return list;
+    }
+
+    /** 已归档的课程（归档列表页用）。按名字排——sort 是归档前的位置，对「翻旧课」没有意义。 */
+    public List<Course> archivedCourses() {
+        List<Course> list = new ArrayList<Course>();
+        Cursor c = getReadableDatabase().rawQuery(
+                courseListSql("c.deleted_at=0 AND c.archived=1") + " ORDER BY c.name COLLATE NOCASE ASC",
+                null);
+        try {
+            while (c.moveToNext()) list.add(readCourse(c));
+        } finally {
+            c.close();
+        }
+        return list;
+    }
+
+    /** 课程列表查询的公共部分。where 里不带 ORDER BY（各查询自己排）。 */
+    private String courseListSql(String where) {
+        return "SELECT c.id,c.name,c.teacher,c.color,c.archived," +
+                "(SELECT COUNT(*) FROM notes n WHERE n.course_id=c.id AND n.deleted_at=0)," +
+                "(SELECT COUNT(*) FROM todos t WHERE t.course_id=c.id AND t.deleted_at=0)," +
+                "(SELECT COUNT(*) FROM todos t WHERE t.course_id=c.id AND t.deleted_at=0 AND t.completed=1) " +
+                "FROM courses c WHERE " + where;
+    }
+
+    /** 从 courseListSql 的游标行读一个 Course（列序：id,name,teacher,color,archived,3×COUNT）。 */
+    private Course readCourse(Cursor c) {
+        Course x = new Course();
+        x.id = c.getString(0);
+        x.name = c.getString(1);
+        x.teacher = c.getString(2);
+        x.color = c.getString(3);
+        x.archived = c.getInt(4) != 0;
+        x.noteCount = c.getInt(5);
+        x.todoCount = c.getInt(6);
+        x.doneCount = c.getInt(7);
+        return x;
+    }
+
+    /**
+     * 按 id 取单门课程；不存在返回 null（调用方要判空）。
+     * **不过滤归档**——CourseActivity 要能打开归档课（从归档列表或搜索历史进来）。
+     */
     public Course course(String id) {
         Cursor c = getReadableDatabase().rawQuery(
-                "SELECT id,name,teacher,color FROM courses WHERE id=? AND deleted_at=0",
+                "SELECT id,name,teacher,color,archived FROM courses WHERE id=? AND deleted_at=0",
                 new String[]{id});
         try {
             if (c.moveToNext()) {
@@ -197,6 +250,7 @@ public class Db extends SQLiteOpenHelper {
                 x.name = c.getString(1);
                 x.teacher = c.getString(2);
                 x.color = c.getString(3);
+                x.archived = c.getInt(4) != 0;
                 return x;
             }
         } finally {
@@ -205,9 +259,28 @@ public class Db extends SQLiteOpenHelper {
         return null;
     }
 
-    /** 课程总数（首页「N 门」用）。回收站里的不计。 */
+    /** 课程总数（首页「N 门」用）。回收站里的、已归档的不计。 */
     public int courseCount() {
-        return count("SELECT COUNT(*) FROM courses WHERE deleted_at=0");
+        return count("SELECT COUNT(*) FROM courses WHERE deleted_at=0 AND archived=0");
+    }
+
+    /** 归档课程数（首页「已归档」入口的显隐与计数用）。 */
+    public int archivedCount() {
+        return count("SELECT COUNT(*) FROM courses WHERE deleted_at=0 AND archived=1");
+    }
+
+    /** 归档一门课：数据原样保留，只是退出首页列表/搜索/统计/全部待办/提醒。 */
+    public void archiveCourse(String id) {
+        ContentValues v = new ContentValues();
+        v.put("archived", 1);
+        getWritableDatabase().update("courses", v, "id=? AND deleted_at=0", new String[]{id});
+    }
+
+    /** 取消归档，课程回到首页列表原位（sort 字段从没动过，位置不变）。 */
+    public void unarchiveCourse(String id) {
+        ContentValues v = new ContentValues();
+        v.put("archived", 0);
+        getWritableDatabase().update("courses", v, "id=?", new String[]{id});
     }
 
         public void saveCourse(String id, String name, String teacher, String color) {
@@ -374,7 +447,7 @@ public class Db extends SQLiteOpenHelper {
         Cursor c = getReadableDatabase().rawQuery(
                 "SELECT n.id,n.course_id,n.title,n.date,n.content,n.keypoints,n.images,n.pinned,n.created," +
                         "c.name,c.color FROM notes n LEFT JOIN courses c ON c.id=n.course_id" +
-                        " WHERE n.deleted_at=0" +
+                        " WHERE n.deleted_at=0 AND c.archived=0" +
                         " AND (n.title LIKE ? OR n.content LIKE ? OR n.keypoints LIKE ?)" +
                         " ORDER BY n.pinned DESC, n.created DESC",
                 new String[]{like, like, like});
@@ -570,7 +643,7 @@ public class Db extends SQLiteOpenHelper {
         Cursor c = getReadableDatabase().rawQuery(
                 "SELECT t.id,t.course_id,t.title,t.due,t.priority,t.completed,t.created,t.remind_at," +
                         "c.name,c.color FROM todos t LEFT JOIN courses c ON c.id=t.course_id" +
-                        " WHERE t.completed=0 AND t.deleted_at=0" +
+                        " WHERE t.completed=0 AND t.deleted_at=0 AND c.archived=0" +
                         " ORDER BY (CASE WHEN t.due IS NULL OR t.due='' THEN 1 ELSE 0 END)," +
                         " t.due ASC," +
                         " (CASE t.priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END)," +
@@ -592,12 +665,15 @@ public class Db extends SQLiteOpenHelper {
     /**
      * 还没到点、且未完成的提醒（开机后重排用）。返回 [id, remind_at] 由调用方再取详情——
      * 这里只需要「哪些要排」，不必把整条待办读出来。
+     * 归档课的待办不排：归档 = 这门课不再活跃，闹钟跟着安静，恢复归档时 rescheduleAll 会补回来。
      */
     public List<Todo> pendingReminders(long now) {
         List<Todo> list = new ArrayList<Todo>();
         Cursor c = getReadableDatabase().rawQuery(
-                "SELECT id,course_id,title,due,priority,completed,created,remind_at FROM todos " +
-                        "WHERE completed=0 AND deleted_at=0 AND remind_at>? ORDER BY remind_at ASC",
+                "SELECT t.id,t.course_id,t.title,t.due,t.priority,t.completed,t.created,t.remind_at " +
+                        "FROM todos t JOIN courses c ON c.id=t.course_id" +
+                        " WHERE t.completed=0 AND t.deleted_at=0 AND c.archived=0 AND t.remind_at>?" +
+                        " ORDER BY t.remind_at ASC",
                 new String[]{String.valueOf(now)});
         try {
             while (c.moveToNext()) list.add(readTodo(c));
@@ -904,7 +980,7 @@ public class Db extends SQLiteOpenHelper {
                 db.delete("courses", null, null);
 
                 SQLiteStatement sc = db.compileStatement(
-                        "INSERT INTO courses(id,name,teacher,color,sort) VALUES(?,?,?,?,?)");
+                        "INSERT INTO courses(id,name,teacher,color,sort,archived) VALUES(?,?,?,?,?,?)");
                 for (int i = 0; i < courses.size(); i++) {
                     Course c = courses.get(i);
                     sc.clearBindings();
@@ -913,6 +989,7 @@ public class Db extends SQLiteOpenHelper {
                     sc.bindString(3, nz(c.teacher));
                     sc.bindString(4, nz(c.color));
                     sc.bindLong(5, i);        // sort 按导入顺序，决定列表里的先后
+                    sc.bindLong(6, c.archived ? 1 : 0);   // 归档状态跟着备份走
                     sc.execute();
                 }
 
@@ -964,9 +1041,12 @@ public class Db extends SQLiteOpenHelper {
      * 三条独立 COUNT，不 JOIN——三张表的统计互不相关，JOIN 只会把行数乘起来。
      */
     public int[] totals() {
-        int notes = count("SELECT COUNT(*) FROM notes WHERE deleted_at=0");
-        int todos = count("SELECT COUNT(*) FROM todos WHERE deleted_at=0");
-        int done = count("SELECT COUNT(*) FROM todos WHERE deleted_at=0 AND completed=1");
+        // 归档课的笔记/待办不计入——统计卡回答「我现在的学习里有多少东西」，
+        // 归档课已经不是活跃学习的一部分（与首页列表、搜索同一口径）
+        String live = "course_id IN (SELECT id FROM courses WHERE deleted_at=0 AND archived=0)";
+        int notes = count("SELECT COUNT(*) FROM notes WHERE deleted_at=0 AND " + live);
+        int todos = count("SELECT COUNT(*) FROM todos WHERE deleted_at=0 AND " + live);
+        int done = count("SELECT COUNT(*) FROM todos WHERE deleted_at=0 AND completed=1 AND " + live);
         return new int[]{notes, todos, done};
     }
 
@@ -982,8 +1062,11 @@ public class Db extends SQLiteOpenHelper {
     public int[][] todoByPriority(String courseId) {
         int[][] out = new int[3][2];
         // 回收站里的待办不计入进度：它们已经不是「要做的事」了
+        // 全量统计（courseId == null）排除归档课——与首页列表、统计卡同一口径
         String sql = "SELECT priority, completed, COUNT(*) FROM todos"
-                + (courseId == null ? " WHERE deleted_at=0" : " WHERE deleted_at=0 AND course_id=?")
+                + (courseId == null
+                        ? " WHERE deleted_at=0 AND course_id IN (SELECT id FROM courses WHERE deleted_at=0 AND archived=0)"
+                        : " WHERE deleted_at=0 AND course_id=?")
                 + " GROUP BY priority, completed";
         Cursor c = getReadableDatabase().rawQuery(sql,
                 courseId == null ? null : new String[]{courseId});

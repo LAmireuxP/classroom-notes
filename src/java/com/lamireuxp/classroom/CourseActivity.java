@@ -300,7 +300,11 @@ public class CourseActivity extends BaseActivity implements Dialogs.DialogHost {
         tbp.leftMargin = Ui.dp(this, 8);
         titleBox.setLayoutParams(tbp);
 
-        TextView title = Ui.text(this, course.name, Ui.T_HEADLINE, Ui.onSurface(this), true);
+        // 归档课从这里打开时（归档列表、通知跳转），标题带上状态——
+        // 不然用户会疑惑这门课为什么不在首页列表里
+        TextView title = Ui.text(this,
+                course.name + (course.archived ? "（已归档）" : ""),
+                Ui.T_HEADLINE, Ui.onSurface(this), true);
         title.setMaxLines(1);
         title.setEllipsize(android.text.TextUtils.TruncateAt.END);
         titleBox.addView(title);
