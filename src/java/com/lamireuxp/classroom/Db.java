@@ -17,7 +17,7 @@ import java.util.List;
 public class Db extends SQLiteOpenHelper {
 
     private static final String NAME = "classroom.db";
-    private static final int VERSION = 5;
+    private static final int VERSION = 6;
 
     private static Db sInstance;
 
@@ -75,6 +75,8 @@ public class Db extends SQLiteOpenHelper {
                 "created INTEGER DEFAULT 0," +
                 "sort INTEGER DEFAULT 0," +
                 "remind_at INTEGER DEFAULT 0," +
+                "note TEXT DEFAULT ''," +
+                "done_at INTEGER DEFAULT 0," +
                 "deleted_at INTEGER DEFAULT 0)");
         db.execSQL("CREATE INDEX idx_notes_course ON notes(course_id)");
         db.execSQL("CREATE INDEX idx_todos_course ON todos(course_id)");
@@ -89,6 +91,7 @@ public class Db extends SQLiteOpenHelper {
      * v3：三张表加 deleted_at（软删除标记，0 = 正常；非 0 = 在回收站）。
      * v4：笔记加 images（配图文件名，分号分隔）。
      * v5：课程加 archived（归档标记，0 = 正常；1 = 已归档）。
+     * v6：待办加 note（备注）与 done_at（完成时刻，0 = 未完成）。
      */
     public void onUpgrade(SQLiteDatabase db, int oldV, int newV) {
         if (oldV < 2) db.execSQL("ALTER TABLE todos ADD COLUMN remind_at INTEGER DEFAULT 0");
@@ -99,6 +102,10 @@ public class Db extends SQLiteOpenHelper {
         }
         if (oldV < 4) db.execSQL("ALTER TABLE notes ADD COLUMN images TEXT DEFAULT ''");
         if (oldV < 5) db.execSQL("ALTER TABLE courses ADD COLUMN archived INTEGER DEFAULT 0");
+        if (oldV < 6) {
+            db.execSQL("ALTER TABLE todos ADD COLUMN note TEXT DEFAULT ''");
+            db.execSQL("ALTER TABLE todos ADD COLUMN done_at INTEGER DEFAULT 0");
+        }
     }
 
     // ---------------- 事务 ----------------
@@ -154,6 +161,10 @@ public class Db extends SQLiteOpenHelper {
         public long created;
         /** 提醒时间（epoch 毫秒）。0 = 不提醒。 */
         public long remindAt;
+        /** 备注：作业要求、考试范围这类补充信息。空串 = 没写。 */
+        public String note = "";
+        /** 完成时刻（epoch 毫秒）。0 = 未完成或老数据没记。 */
+        public long doneAt;
     }
 
     /**
@@ -619,7 +630,7 @@ public class Db extends SQLiteOpenHelper {
     public List<Todo> todos(String courseId) {
         List<Todo> list = new ArrayList<Todo>();
         Cursor c = getReadableDatabase().rawQuery(
-                "SELECT id,course_id,title,due,priority,completed,created,remind_at FROM todos " +
+                "SELECT id,course_id,title,due,priority,completed,created,remind_at,note,done_at FROM todos " +
                         "WHERE course_id=? AND deleted_at=0 ORDER BY completed ASC, sort ASC, created DESC",
                 new String[]{courseId});
         try {
@@ -641,7 +652,7 @@ public class Db extends SQLiteOpenHelper {
     public List<TodoHit> openTodos() {
         List<TodoHit> list = new ArrayList<TodoHit>();
         Cursor c = getReadableDatabase().rawQuery(
-                "SELECT t.id,t.course_id,t.title,t.due,t.priority,t.completed,t.created,t.remind_at," +
+                "SELECT t.id,t.course_id,t.title,t.due,t.priority,t.completed,t.created,t.remind_at,t.note,t.done_at," +
                         "c.name,c.color FROM todos t LEFT JOIN courses c ON c.id=t.course_id" +
                         " WHERE t.completed=0 AND t.deleted_at=0 AND c.archived=0" +
                         " ORDER BY (CASE WHEN t.due IS NULL OR t.due='' THEN 1 ELSE 0 END)," +
@@ -651,9 +662,9 @@ public class Db extends SQLiteOpenHelper {
         try {
             while (c.moveToNext()) {
                 TodoHit h = new TodoHit();
-                h.todo = readTodo(c);        // 前 8 列的顺序与 readTodo 对齐
-                h.courseName = c.getString(8);
-                h.courseColor = c.getString(9);
+                h.todo = readTodo(c);        // 前 10 列的顺序与 readTodo 对齐
+                h.courseName = c.getString(10);
+                h.courseColor = c.getString(11);
                 list.add(h);
             }
         } finally {
@@ -670,7 +681,7 @@ public class Db extends SQLiteOpenHelper {
     public List<Todo> pendingReminders(long now) {
         List<Todo> list = new ArrayList<Todo>();
         Cursor c = getReadableDatabase().rawQuery(
-                "SELECT t.id,t.course_id,t.title,t.due,t.priority,t.completed,t.created,t.remind_at " +
+                "SELECT t.id,t.course_id,t.title,t.due,t.priority,t.completed,t.created,t.remind_at,t.note,t.done_at " +
                         "FROM todos t JOIN courses c ON c.id=t.course_id" +
                         " WHERE t.completed=0 AND t.deleted_at=0 AND c.archived=0 AND t.remind_at>?" +
                         " ORDER BY t.remind_at ASC",
@@ -686,7 +697,7 @@ public class Db extends SQLiteOpenHelper {
     /** 按 id 取单条待办；不存在返回 null。 */
     public Todo todo(String id) {
         Cursor c = getReadableDatabase().rawQuery(
-                "SELECT id,course_id,title,due,priority,completed,created,remind_at FROM todos" +
+                "SELECT id,course_id,title,due,priority,completed,created,remind_at,note,done_at FROM todos" +
                         " WHERE id=? AND deleted_at=0",
                 new String[]{id});
         try {
@@ -702,6 +713,7 @@ public class Db extends SQLiteOpenHelper {
      * `SELECT id,course_id,title,due,priority,completed,created,remind_at` 对齐
      * （加字段时要五处一起改：建表、迁移、本段查询、searchNotes 之外的各查询、这里）。
      */
+    /** 从 todos 查询的游标行读一个 Todo。列序固定为 todos 查询的 SELECT 顺序（见各查询）。 */
     private Todo readTodo(Cursor c) {
         Todo t = new Todo();
         t.id = c.getString(0);
@@ -712,6 +724,8 @@ public class Db extends SQLiteOpenHelper {
         t.completed = c.getInt(5) == 1;
         t.created = c.getLong(6);
         t.remindAt = c.getLong(7);
+        t.note = nz(c.getString(8));
+        t.doneAt = c.getLong(9);
         return t;
     }
 
@@ -724,6 +738,9 @@ public class Db extends SQLiteOpenHelper {
         v.put("priority", t.priority == null ? "medium" : t.priority);
         v.put("completed", t.completed ? 1 : 0);
         v.put("remind_at", t.remindAt);
+        v.put("note", t.note == null ? "" : t.note);
+        // done_at 跟着对象走：编辑保存不丢完成时刻；新建时是 0
+        v.put("done_at", t.doneAt);
         int rows = getWritableDatabase().update("todos", v, "id=?", new String[]{t.id});
         if (rows == 0) {
             v.put("created", t.created == 0 ? System.currentTimeMillis() : t.created);
@@ -781,10 +798,11 @@ public class Db extends SQLiteOpenHelper {
         }
     }
 
-    /** 勾选/取消勾选待办。 */
+    /** 勾选/取消勾选待办。勾选时记下完成时刻（行上要显示「完成于」），取消时清零。 */
     public void setTodoCompleted(String id, boolean completed) {
         ContentValues v = new ContentValues();
         v.put("completed", completed ? 1 : 0);
+        v.put("done_at", completed ? System.currentTimeMillis() : 0);
         getWritableDatabase().update("todos", v, "id=?", new String[]{id});
     }
 
@@ -1010,8 +1028,8 @@ public class Db extends SQLiteOpenHelper {
                 }
 
                 SQLiteStatement st = db.compileStatement(
-                        "INSERT INTO todos(id,course_id,title,due,priority,completed,created,remind_at)"
-                                + " VALUES(?,?,?,?,?,?,?,?)");
+                        "INSERT INTO todos(id,course_id,title,due,priority,completed,created,remind_at,note,done_at)"
+                                + " VALUES(?,?,?,?,?,?,?,?,?,?)");
                 for (Todo t : todos) {
                     st.clearBindings();
                     st.bindString(1, nz(t.id));
@@ -1022,6 +1040,8 @@ public class Db extends SQLiteOpenHelper {
                     st.bindLong(6, t.completed ? 1 : 0);
                     st.bindLong(7, t.created == 0 ? System.currentTimeMillis() : t.created);
                     st.bindLong(8, t.remindAt);
+                    st.bindString(9, nz(t.note));
+                    st.bindLong(10, t.doneAt);
                     st.execute();
                 }
             }

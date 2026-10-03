@@ -187,31 +187,28 @@ public class MainActivity extends BaseActivity implements Dialogs.DialogHost {
     }
 
     /**
-     * 顶栏：应用名 + 主题开关 + 设置入口。
-     * 主题开关放在这里是因为它是最常被点的设置项——为此多点两层进设置页不值得。
+     * 顶栏 —— 大标题式（Apple Notes / MD3 large top bar）：
+     * 第一行是动作行（品牌标志 + 主题开关 + 设置），第二行是 28sp 的大字标题。
+     * 标题从「顶栏里的一枚标签」变成页面的排版主视觉——这是文档型应用
+     * （Apple Notes、Notion 移动端）的标准开头，比居中小标题更有呼吸感。
+     * 主题开关放在第一行是因为它是最常被点的设置项——多点两层进设置页不值得。
      */
     private View topBar() {
-        LinearLayout bar = Ui.row(this);
-        bar.setBackgroundColor(Ui.surface(this));
-        int padH = Ui.dp(this, 16), padV = Ui.v(this, 12);
-        bar.setPadding(padH, padV, Ui.dp(this, 8), padV);
+        LinearLayout box = Ui.column(this);
+        box.setBackgroundColor(Ui.surface(this));
 
-        // 标题区：图标 + 大标题
-        LinearLayout titleBox = Ui.row(this);
+        // 第一行：logo + spacer + 主题开关 + 设置
+        LinearLayout bar = Ui.row(this);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(Ui.dp(this, 16), Ui.v(this, 10), Ui.dp(this, 8), 0);
+
         // 顶栏标志：用设计稿那个「鹿角 + 话筒 + 声波」的单色矢量。
         // 它由 tools/svg-to-vectordrawable.py 从原设计 SVG 生成（描边改纯色——
         // VectorDrawable 不支持描边渐变，而这里本来就要用 SRC_IN 套主题色，渐变没有意义）。
         // 外边两道声波带 strokeAlpha=0.7，SRC_IN 只换颜色不换 alpha，那层「弱化」保住了。
-        ImageView logo = Icons.icon(this, R.drawable.ic_brand, Ui.primary(this), 24);
-        titleBox.addView(logo);
-        TextView title = Ui.text(this, "课堂整理", Ui.T_HEADLINE, Ui.onSurface(this), true);
-        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        tp.leftMargin = Ui.dp(this, 10);
-        title.setLayoutParams(tp);
-        titleBox.addView(title);
-        titleBox.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        bar.addView(titleBox);
+        ImageView logo = Icons.icon(this, R.drawable.ic_brand, Ui.primary(this), 26);
+        bar.addView(logo);
+        bar.addView(Ui.spacer(this));
 
         // 主题开关（胶囊 + 月亮/太阳，参考 galaxy Toggle-switches）
         // 按下即生效：开关内部写偏好后回调这里就地重绘，不等动画、不重建 Activity
@@ -233,8 +230,14 @@ public class MainActivity extends BaseActivity implements Dialogs.DialogHost {
             }
         });
         bar.addView(settingsBtn);
+        box.addView(bar);
 
-        return bar;
+        // 第二行：大字标题
+        TextView title = Ui.text(this, "课堂整理", Ui.T_DISPLAY + 2, Ui.onSurface(this), true);
+        title.setPadding(Ui.dp(this, 16), Ui.v(this, 8), Ui.dp(this, 16), Ui.v(this, 12));
+        box.addView(title);
+
+        return box;
     }
 
     // ================== 渲染 ==================
@@ -520,7 +523,7 @@ public class MainActivity extends BaseActivity implements Dialogs.DialogHost {
         card.setLayoutParams(lp);
         card.setClickable(true);
         card.setFocusable(true);
-        Ui.elevation(card, 1f);
+        // 层级交给表面阶梯（surfaceContainer 比 surface 高一级），不再垫阴影
         Ui.pressScale(card);
         card.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
@@ -571,7 +574,8 @@ public class MainActivity extends BaseActivity implements Dialogs.DialogHost {
     }
 
     /**
-     * 课程行 —— 卡片式：surfaceContainer 底 + large 圆角 + 微弱浮起 + 按压回弹。
+     * 课程行 —— 卡片式：surfaceContainer 底 + 12dp 圆角 + 按压回弹，无阴影
+     * （层级靠表面阶梯表达——Notion/Linear 的共识：阴影留给真正浮起的东西，比如 FAB）。
      *
      * 原来是扁平列表行 + 行间分隔线（MD3 列表规范）。首页的课程是**页面主体内容**而非
      * 嵌套在另一张卡里，用卡片能给出更清晰的视觉分组与可点击感；课程页的笔记行保持
@@ -585,21 +589,21 @@ public class MainActivity extends BaseActivity implements Dialogs.DialogHost {
         row.setLayoutParams(rlp);
         int padH = Ui.dp(this, 16), padV = Ui.v(this, 14);
         row.setPadding(padH, padV, Ui.dp(this, 8), padV);
-        row.setBackground(Ui.ripple(this, Ui.surfaceContainer(this), Ui.R_L));
+        row.setBackground(Ui.ripple(this, Ui.surfaceContainer(this), Ui.R_M));
         row.setClickable(true);
         row.setFocusable(true);
         row.setMinimumHeight(Ui.vMin(this, 64));
-        Ui.elevation(row, 1.5f);
         Ui.pressScale(row);
 
-        // 色点（课程标识，非色条）
-        View dot = new View(this);
-        dot.setBackground(Ui.circle(Ui.parseColor(c.color, Ui.primary(this)), Ui.dp(this, 10)));
+        // 课程色条（Notion 数据库色条式：内容左侧一短条，比圆点更有页面感）
+        View colorBar = new View(this);
+        colorBar.setBackground(Ui.round(this, Ui.parseColor(c.color, Ui.primary(this)),
+                Color.TRANSPARENT, Ui.dp(this, 2), 0));
         LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
-                Ui.dp(this, 10), Ui.dp(this, 10));
-        dlp.rightMargin = Ui.dp(this, 14);
-        dot.setLayoutParams(dlp);
-        row.addView(dot);
+                Ui.dp(this, 4), Ui.dp(this, 26));
+        dlp.rightMargin = Ui.dp(this, 12);
+        colorBar.setLayoutParams(dlp);
+        row.addView(colorBar);
 
         // 标题 + 元信息
         LinearLayout mid = Ui.column(this);

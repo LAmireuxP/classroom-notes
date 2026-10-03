@@ -924,10 +924,12 @@ public class CourseActivity extends BaseActivity implements Dialogs.DialogHost {
         // 必须可点击：拖动排序靠容器拦截触摸流实现（DragSort），而拦截只在
         // 「触摸目标存在」时才被咨询。行本身不可点的话，DOWN 会一路穿透到
         // ScrollView 手里，容器根本不在派发链上——长按后影子会生成但冻在
-        // 原地，MOVE/UP 一个都收不到（真机实测）。笔记行 / 课程卡都有点击
-        // 行为天然可点；待办行没有行级动作，这里显式声明，点击无动作但
-        // 把触摸流留在链上。勾选框、删除按钮各自可点，不受影响。
+        // 原地，MOVE/UP 一个都收不到（真机实测）。1.7 起行点击有了真实动作
+        // （进编辑页），触摸流天然留在链上；勾选框、删除按钮各自可点，不受影响。
         row.setClickable(true);
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { editTodo(t); }
+        });
 
         // MD3 Checkbox：圆形勾选
         final LinearLayout checkBox = Ui.row(this);
@@ -972,12 +974,26 @@ public class CourseActivity extends BaseActivity implements Dialogs.DialogHost {
         // 提醒时刻也写进副标题：设过提醒的待办要一眼能看出来，
         // 否则用户不确定「到底设上了没有」，只能再点开表单确认。
         if (t.remindAt > 0) sub += " · 提醒 " + Dates.stamp(t.remindAt);
+        // 完成时刻：勾了什么时候勾的，回收「已完成」堆里分得清先后
+        if (t.completed && t.doneAt > 0) sub += " · 完成于 " + Dates.stamp(t.doneAt);
         TextView subTv = Ui.text(this, sub, Ui.T_LABEL, Ui.onSurfaceVariant(this), false);
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         sp.topMargin = Ui.v(this, 2);
         subTv.setLayoutParams(sp);
         mid.addView(subTv);
+
+        // 备注摘要：写了备注就露一行，不然用户不知道这条还挂着补充信息
+        if (t.note != null && t.note.length() > 0) {
+            TextView noteTv = Ui.text(this, t.note, Ui.T_LABEL, Ui.onSurfaceVariant(this), false);
+            noteTv.setMaxLines(1);
+            noteTv.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            np.topMargin = Ui.v(this, 2);
+            noteTv.setLayoutParams(np);
+            mid.addView(noteTv);
+        }
         row.addView(mid);
 
         LinearLayout del = Icons.iconButton(this, R.drawable.ic_trash, 40, Ui.outline(this));
@@ -1001,6 +1017,14 @@ public class CourseActivity extends BaseActivity implements Dialogs.DialogHost {
     private String priorityLabel(String p) {
         // 名字和颜色都归 Ui 管，进度条、图例、分段选项共用一份，免得各写一套
         return Ui.priorityName(p);
+    }
+
+    /** 进待办编辑页（courseId + todoId 双 extra，编辑器按 todoId 加载原数据）。 */
+    private void editTodo(Db.Todo t) {
+        Intent it = new Intent(this, TodoEditorActivity.class);
+        it.putExtra("courseId", t.courseId);
+        it.putExtra("todoId", t.id);
+        startActivity(it);
     }
 
     // ================== 新建 / 编辑 ==================

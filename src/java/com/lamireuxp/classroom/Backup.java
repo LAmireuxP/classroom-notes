@@ -85,6 +85,8 @@ public final class Backup {
                 // 提醒时间也带上：不带的话导出再导入，提醒就静默丢了。
                 // 这是本项目自己的补充字段，网页版读到会忽略，双向互通不受影响。
                 o.put("remindAt", t.remindAt);
+                o.put("note", nz(t.note));
+                o.put("doneAt", t.doneAt);
                 todos.put(o);
             }
             co.put("todos", todos);
@@ -186,6 +188,8 @@ public final class Backup {
                 t.completed = o.optBoolean("completed", false);
                 t.created = o.optLong("created", System.currentTimeMillis());
                 t.remindAt = o.optLong("remindAt", 0);
+                t.note = o.optString("note", "");
+                t.doneAt = o.optLong("doneAt", 0);
                 p.todos.add(t);
             }
         }

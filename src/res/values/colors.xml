@@ -1,85 +1,91 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  色板 · 按 docs/DESIGN.md 的 token 体系。
+  浅色 = Notion 暖纸系（暖白底 #FAFAF8 / 暖炭字 #37352F / 暖灰表面阶梯）；
+  深色 = Notion 深色 + Linear 微调（中性深灰 #171717，不用纯黑）。
+  primary 全局唯一强调色：只给主 CTA / 选中态 / 品牌标识，不做大面积铺色。
+  改色注意：light_ 与 dark_ 必须成对改，漏一侧 tone() 会兜底纯黑/白。
+-->
 <resources>
-    <!-- Material Design 3 · Light Palettes -->
-    <color name="light_primary">#4F5BD5</color>
+    <!-- Light · 暖纸面（Notion） -->
+    <color name="light_primary">#4353E8</color>
     <color name="light_on_primary">#FFFFFF</color>
-    <color name="light_primary_container">#DFE0FF</color>
-    <color name="light_on_primary_container">#00105C</color>
+    <color name="light_primary_container">#E1E6FD</color>
+    <color name="light_on_primary_container">#16215E</color>
 
-    <color name="light_secondary">#5B5D72</color>
-    <color name="light_secondary_container">#E0E1F9</color>
-    <color name="light_on_secondary_container">#181A2C</color>
+    <color name="light_secondary">#6B6A64</color>
+    <color name="light_secondary_container">#ECEAE4</color>
+    <color name="light_on_secondary_container">#26251F</color>
 
-    <color name="light_tertiary">#77536D</color>
-    <color name="light_tertiary_container">#FFD7F1</color>
-    <color name="light_on_tertiary_container">#2D1228</color>
+    <color name="light_tertiary">#7A6558</color>
+    <color name="light_tertiary_container">#F3E4DC</color>
+    <color name="light_on_tertiary_container">#2E211A</color>
 
-    <color name="light_error">#BA1A1A</color>
+    <color name="light_error">#E03131</color>
     <color name="light_on_error">#FFFFFF</color>
-    <color name="light_error_container">#FFDAD6</color>
-    <color name="light_on_error_container">#410002</color>
+    <color name="light_error_container">#FFEBE3</color>
+    <color name="light_on_error_container">#5C1A10</color>
 
-    <color name="light_surface">#FEFBFF</color>
-    <color name="light_on_surface">#1B1B1F</color>
-    <color name="light_on_surface_variant">#45464F</color>
+    <color name="light_surface">#FAFAF8</color>
+    <color name="light_on_surface">#37352F</color>
+    <color name="light_on_surface_variant">#787774</color>
     <color name="light_surface_container_lowest">#FFFFFF</color>
-    <color name="light_surface_container_low">#F8F6FA</color>
-    <color name="light_surface_container">#F2F0F4</color>
-    <color name="light_surface_container_high">#ECEBEF</color>
-    <color name="light_surface_container_highest">#E6E5EA</color>
-    <color name="light_outline">#767680</color>
-    <color name="light_outline_variant">#C6C5D0</color>
-    <color name="light_inverse_surface">#303034</color>
-    <color name="light_inverse_on_surface">#F3F0F4</color>
+    <color name="light_surface_container_low">#F4F3F0</color>
+    <color name="light_surface_container">#F1F0EE</color>
+    <color name="light_surface_container_high">#EAE8E4</color>
+    <color name="light_surface_container_highest">#E3E1DD</color>
+    <color name="light_outline">#82827E</color>
+    <color name="light_outline_variant">#D6D3CD</color>
+    <color name="light_inverse_surface">#2F2E2B</color>
+    <color name="light_inverse_on_surface">#F1F0EE</color>
 
     <!--
-      成功态对勾色。药丸底色用的是 inverse_surface（浅主题下是深灰 #303034、
-      深主题下反而是浅灰 #E4E1E6），所以两种主题的绿要反着配：浅主题药丸底深、
-      用亮一点的绿，深主题药丸底浅、用暗一点的绿，对比度都按图形元素 >=3:1 来的。
+      成功态对勾色。药丸底色用的是 inverse_surface（浅主题下是深灰、
+      深主题下反而是浅灰），两种主题的绿要反着配：浅主题药丸底深、
+      用亮一点的绿，深主题药丸底浅、用暗一点的绿。
     -->
-    <color name="light_success">#34C77B</color>
+    <color name="light_success">#1AAE39</color>
 
-    <!-- Material Design 3 · Dark Palettes -->
-    <color name="dark_primary">#BAC3FF</color>
-    <color name="dark_on_primary">#1D2B77</color>
-    <color name="dark_primary_container">#35428E</color>
-    <color name="dark_on_primary_container">#DFE0FF</color>
+    <!-- Dark · 中性深灰（Notion 深色，Linear 式阶梯，不用纯黑） -->
+    <color name="dark_primary">#A5B4FF</color>
+    <color name="dark_on_primary">#17246B</color>
+    <color name="dark_primary_container">#2E3B85</color>
+    <color name="dark_on_primary_container">#DDE2FD</color>
 
-    <color name="dark_secondary">#C4C5DD</color>
-    <color name="dark_secondary_container">#434559</color>
-    <color name="dark_on_secondary_container">#E0E1F9</color>
+    <color name="dark_secondary">#B8B7B1</color>
+    <color name="dark_secondary_container">#33322F</color>
+    <color name="dark_on_secondary_container">#ECEAE4</color>
 
-    <color name="dark_tertiary">#E6B9D9</color>
-    <color name="dark_tertiary_container">#5D3C55</color>
-    <color name="dark_on_tertiary_container">#FFD7F1</color>
+    <color name="dark_tertiary">#D9BBAC</color>
+    <color name="dark_tertiary_container">#4A372D</color>
+    <color name="dark_on_tertiary_container">#F3E4DC</color>
 
-    <color name="dark_error">#FFB4AB</color>
-    <color name="dark_on_error">#690005</color>
-    <color name="dark_error_container">#93000A</color>
-    <color name="dark_on_error_container">#FFDAD6</color>
+    <color name="dark_error">#FF7369</color>
+    <color name="dark_on_error">#5C1310</color>
+    <color name="dark_error_container">#7A231C</color>
+    <color name="dark_on_error_container">#FFDAD4</color>
 
-    <color name="dark_surface">#131316</color>
-    <color name="dark_on_surface">#E4E1E6</color>
-    <color name="dark_on_surface_variant">#C6C5D0</color>
-    <color name="dark_surface_container_lowest">#0E0E11</color>
-    <color name="dark_surface_container_low">#1B1B1F</color>
-    <color name="dark_surface_container">#1F1F23</color>
-    <color name="dark_surface_container_high">#2A2A2E</color>
-    <color name="dark_surface_container_highest">#353539</color>
-    <color name="dark_outline">#90909A</color>
-    <color name="dark_outline_variant">#45464F</color>
+    <color name="dark_surface">#171717</color>
+    <color name="dark_on_surface">#E9E9E7</color>
+    <color name="dark_on_surface_variant">#9B9A97</color>
+    <color name="dark_surface_container_lowest">#121212</color>
+    <color name="dark_surface_container_low">#1E1E1E</color>
+    <color name="dark_surface_container">#232323</color>
+    <color name="dark_surface_container_high">#2C2C2C</color>
+    <color name="dark_surface_container_highest">#363636</color>
+    <color name="dark_outline">#8A8A85</color>
+    <color name="dark_outline_variant">#3D3D3B</color>
     <!--
-      深色卡片专用的描边。原色 dark_outline_variant #45464F 比它所处的
-      dark_surface_container #1F1F23 亮了 +38，看起来像个「灰框」而不是
-      「轻微分离」；Linear 的 hairline 相对其 surface 只高约 +20。
-      outline_variant 保留给输入框等需要明确边界的地方。
+      深色卡片专用描边：比 dark_surface_container 只高约 +11，
+      是「轻微分离」而不是「灰框」。outline_variant（+26）留给输入框等
+      需要明确边界的地方。
     -->
-    <color name="dark_hairline">#2E2F35</color>
-    <color name="dark_inverse_surface">#E4E1E6</color>
-    <color name="dark_inverse_on_surface">#303034</color>
+    <color name="dark_hairline">#2E2E2C</color>
+    <color name="dark_inverse_surface">#E9E9E7</color>
+    <color name="dark_inverse_on_surface">#171717</color>
 
     <!-- 深主题的药丸底是浅灰（inverse_surface 跟着主题反），所以绿要压暗。 -->
-    <color name="dark_success">#0E7A4A</color>
+    <color name="dark_success">#449E5E</color>
 
     <color name="ic_launcher_background">#ffffff</color>
 </resources>

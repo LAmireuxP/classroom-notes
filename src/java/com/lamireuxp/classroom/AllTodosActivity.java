@@ -243,6 +243,19 @@ public class AllTodosActivity extends BaseActivity {
         sp.topMargin = Ui.v(this, 2);
         subTv.setLayoutParams(sp);
         mid.addView(subTv);
+
+        // 备注摘要：跨课程汇总里更要露——不点进去不知道这条还挂着要求
+        if (t.note != null && t.note.length() > 0) {
+            TextView noteTv = Ui.text(this, t.note, Ui.T_LABEL, Ui.onSurfaceVariant(this), false);
+            noteTv.setMaxLines(1);
+            noteTv.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            LinearLayout.LayoutParams np = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            np.topMargin = Ui.v(this, 2);
+            noteTv.setLayoutParams(np);
+            mid.addView(noteTv);
+        }
+        mid.addView(subTv);
         row.addView(mid);
 
         LinearLayout del = Icons.iconButton(this, R.drawable.ic_trash, 40, Ui.outline(this));
@@ -256,14 +269,15 @@ public class AllTodosActivity extends BaseActivity {
         });
         row.addView(del);
 
-        // 整行点击进课程页的待办页签：色点和课程名都在说「这条属于某门课」，
-        // 点它就该去那门课看上下文，而不是在这里就地编辑（这里没有课程上下文）
+        // 整行点击进待办编辑页：编辑页是独立页面、字段完整（含备注），在这里
+        // 一步直达比「跳课程页 → 再找出那条 → 点编辑」少两层。勾选框、删除
+        // 按钮各自可点，不受影响。
         row.setClickable(true);
         row.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                Intent it = new Intent(AllTodosActivity.this, CourseActivity.class);
+                Intent it = new Intent(AllTodosActivity.this, TodoEditorActivity.class);
                 it.putExtra("courseId", t.courseId);
-                it.putExtra("tab", "todos");
+                it.putExtra("todoId", t.id);
                 startActivity(it);
             }
         });

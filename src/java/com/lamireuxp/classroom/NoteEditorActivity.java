@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
@@ -18,25 +19,27 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 笔记编辑页 —— 新建 / 编辑笔记的独立页面。
+ * 笔记编辑页 —— 沉浸式全屏编辑器（参考华为笔记）。
  *
- * 原来用 Dialogs.form 弹窗，现在改成全屏页面：笔记内容是多行长文本，弹窗里
- * 编辑空间太小。全屏页面给正文和重点清单足够的书写空间，和设置页同一套骨架。
+ * 1.7 之前是「标签 + 输入框 + 标签 + 输入框」的表单式布局（继承 BaseSettingsActivity），
+ * 像设置页，不像编辑器——字段标签占地方、正文被挤、视觉重心落在表单结构而不是内容上。
  *
- * 配图：每条笔记可以挂若干张图片（拍板书、截 PPT），存 app 内部目录，
- * 文件路径以分号分隔存在 Note.images 字段里。编辑页负责添加和删除，
- * 课程页展开时负责展示。
+ * 现在改成沉浸式：
+ *  - 顶栏极简（返回 + 保存图标），无标题
+ *  - 标题大字（T_DISPLAY）直接可编辑，无标签行
+ *  - 日期弱化小字 + 日历图标，点选改
+ *  - 正文铺满，无标签、无边框，行高放宽
+ *  - 重点用「—— 重点 ——」分隔线引导，每行一条
+ *  - 配图内联在正文之后，横排缩略图 + 添加
+ *  - 底部浮动工具栏：日期 / 重点 / 图片 / 保存，键盘弹起时跟到键盘上方
  *
- * Intent extras：courseId（必填）、noteId（可选——有=编辑、无=新建）。
- * 保存后 finish()，CourseActivity.onResumed() 会自动 renderTabs + renderContent。
+ * 数据层（Note 字段、Db.saveNote）不动，只改界面。
  */
-public class NoteEditorActivity extends BaseSettingsActivity {
+public class NoteEditorActivity extends BaseActivity {
 
     private static final int REQ_PICK_IMAGE = 301;
 
@@ -44,13 +47,19 @@ public class NoteEditorActivity extends BaseSettingsActivity {
     private String courseId;
     /** 编辑态时持有原笔记；新建态为 null。 */
     private Db.Note editing;
-    /** 内存状态：新建时是空 Note，编辑时是原数据的副本。fillBody 从这里填字段。 */
+    /** 内存状态：新建时是空 Note，编辑时是原数据的副本。capture 从这里填字段。 */
     private Db.Note state;
     private EditText titleField, contentField, keyPointsField;
     /** 配图路径列表（编辑期间的内存状态，保存时写回 state.images）。 */
     private final List<String> imagePaths = new ArrayList<String>();
-    /** 图片缩略图行的容器引用（增删图片后要重建）。 */
+    /** 配图缩略图行的容器引用（增删图片后要重建）。 */
     private LinearLayout imageContainer;
+    /** 底部浮动工具栏（跟键盘）。 */
+    private LinearLayout toolbar;
+    /** 滚动容器（工具栏贴边时要知道它的位置）。 */
+    private ScrollView scroller;
+    /** 内容根（加 padding 给底部工具栏让位）。 */
+    private LinearLayout contentRoot;
 
     @Override
     protected void onCreateUi(Bundle b) {
@@ -63,18 +72,13 @@ public class NoteEditorActivity extends BaseSettingsActivity {
         state = editing != null ? editing : new Db.Note();
         if (state.date == null || state.date.length() == 0) state.date = Dates.today();
         loadImages(state.images);
-        super.onCreateUi(b);
-    }
-
-    @Override
-    protected String title() {
-        return editing != null ? "编辑笔记" : "新建笔记";
+        buildUi();
     }
 
     @Override
     protected void onRebuildUi() {
         capture();
-        super.onRebuildUi();
+        buildUi();
     }
 
     /** 把输入框里的值捞回 state（图片路径本身就在 state.images 里，不需要捞）。 */
@@ -104,45 +108,154 @@ public class NoteEditorActivity extends BaseSettingsActivity {
         state.images = sb.toString();
     }
 
-    @Override
-    protected void fillBody(LinearLayout body) {
-        titleField = labeledField("标题", "第一章 极限与连续",
-                Ui.nz(state.title));
+    // ================== 界面搭建 ==================
 
-        // 日期：点选而非手输——手输日期格式太多写法，敲错会让 shortDate 解析出错
-        formLabel(body, "日期");
+    /**
+     * 沉浸式骨架：顶栏（极简）+ 滚动内容 + 底部浮动工具栏。
+     * 不复用 BaseSettingsActivity——它的顶栏有标题、body 有统一 padding、
+     * 没有底部工具栏，这些在沉浸编辑器里都不合适。
+     */
+    private void buildUi() {
+        LinearLayout root = Ui.column(this);
+        root.setBackgroundColor(Ui.surface(this));
+        setContentView(root);
+        Ui.padStatusBar(this, topBar(root));
+
+        scroller = new ScrollView(this);
+        scroller.setFillViewport(true);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        scroller.setLayoutParams(sp);
+
+        contentRoot = Ui.column(this);
+        int hp = Ui.dp(this, 20);
+        contentRoot.setPadding(hp, Ui.v(this, 8), hp, Ui.v(this, 80));
+        scroller.addView(contentRoot);
+        root.addView(scroller);
+
+        fillContent(contentRoot);
+        root.addView(bottomToolbar());
+    }
+
+    /** 顶栏：返回 + 右侧保存图标。无标题——沉浸式让内容自己说话。 */
+    private View topBar(LinearLayout root) {
+        LinearLayout bar = Ui.row(this);
+        bar.setBackgroundColor(Ui.surface(this));
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(Ui.dp(this, 6), Ui.v(this, 10), Ui.dp(this, 8), Ui.v(this, 10));
+        Ui.padStatusBar(this, bar);
+
+        LinearLayout back = Icons.iconButton(this, R.drawable.ic_back, 42,
+                Ui.onSurfaceVariant(this));
+        back.setContentDescription("返回");
+        back.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { onBackPressed(); }
+        });
+        bar.addView(back);
+
+        bar.addView(Ui.spacer(this));
+
+        LinearLayout save = Icons.iconButton(this, R.drawable.ic_check, 42,
+                Ui.primary(this));
+        save.setContentDescription("保存");
+        save.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { save(); }
+        });
+        bar.addView(save);
+
+        root.addView(bar);
+        // 沉浸式：顶栏与内容之间不加分隔线，靠留白过渡（华为笔记风格）
+        return bar;
+    }
+
+    /**
+     * 内容区：标题（大字）→ 日期（弱化）→ 正文 → 重点 → 配图。
+     * 全程无分隔线、无字段标签——靠留白和字号区分内容流（华为笔记风格）。
+     */
+    private void fillContent(LinearLayout body) {
+        // 标题：大字、加粗、无边框、直接编辑
+        titleField = new EditText(this);
+        titleField.setHint("标题");
+        titleField.setTextSize(Ui.T_DISPLAY);
+        titleField.setTextColor(Ui.onSurface(this));
+        titleField.setHintTextColor(Ui.onSurfaceVariant(this));
+        titleField.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        titleField.setBackground(null);
+        titleField.setSingleLine(true);
+        titleField.setMaxLines(2);
+        titleField.setEllipsize(null);
+        titleField.setPadding(Ui.dp(this, 0), Ui.v(this, 4), Ui.dp(this, 0), Ui.v(this, 6));
+        if (state != null && state.title != null) titleField.setText(state.title);
+        body.addView(titleField);
+
+        // 日期：弱化小字，点选改
         body.addView(dateRow());
 
-        // 笔记内容：多行
-        formLabel(body, "笔记内容");
-        contentField = Ui.input(this, "课堂内容、理解与疑问…");
+        // 正文：17sp + 1.5+ 行高（Apple 的阅读节奏——正文比 UI 大一号才叫「读」）
+        contentField = new EditText(this);
+        contentField.setHint("课堂内容、理解与疑问…");
+        contentField.setTextSize(17);
+        contentField.setTextColor(Ui.onSurface(this));
+        contentField.setHintTextColor(Ui.onSurfaceVariant(this));
+        contentField.setBackground(null);
         contentField.setSingleLine(false);
         contentField.setGravity(Gravity.TOP | Gravity.START);
-        contentField.setMinLines(8);
+        contentField.setMinLines(6);
+        contentField.setLineSpacing(Ui.v(this, 5), 1f);
+        contentField.setPadding(Ui.dp(this, 0), Ui.v(this, 16), Ui.dp(this, 0), Ui.v(this, 8));
         if (state != null && state.content != null) contentField.setText(state.content);
         body.addView(contentField);
 
-        // 重点（每行一条）：多行
-        formLabel(body, "重点（每行一条）");
-        keyPointsField = Ui.input(this, "每行一条重点");
+        // 重点：留白引导 + 多行输入，不加分隔线标题
+        keyPointsField = new EditText(this);
+        keyPointsField.setHint("重点（每行一条）");
+        keyPointsField.setTextSize(16);
+        keyPointsField.setTextColor(Ui.onSurface(this));
+        keyPointsField.setHintTextColor(Ui.onSurfaceVariant(this));
+        keyPointsField.setBackground(null);
         keyPointsField.setSingleLine(false);
         keyPointsField.setGravity(Gravity.TOP | Gravity.START);
         keyPointsField.setMinLines(3);
-        keyPointsField.setMaxLines(8);
+        keyPointsField.setLineSpacing(Ui.v(this, 4), 1f);
+        keyPointsField.setPadding(Ui.dp(this, 0), Ui.v(this, 12), Ui.dp(this, 0), Ui.v(this, 8));
         if (state != null && state.keyPoints != null) {
             keyPointsField.setText(Db.joinString(state.keyPoints));
         }
         body.addView(keyPointsField);
 
-        // 配图：缩略图 + 添加按钮
-        formLabel(body, "图片");
+        // 配图：横排缩略图 + 添加，无标题
         imageContainer = Ui.column(this);
+        imageContainer.setPadding(Ui.dp(this, 0), Ui.v(this, 8), Ui.dp(this, 0), Ui.v(this, 8));
         renderImageRow();
         body.addView(imageContainer);
+    }
 
-        body.addView(saveButton("保存", new Runnable() {
-            @Override public void run() { save(); }
-        }));
+    /** 日期行：弱化小字，点选打开日期选择器（华为笔记风格——无图标，纯文字）。 */
+    private View dateRow() {
+        LinearLayout row = Ui.row(this);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(Ui.dp(this, 0), Ui.v(this, 2), Ui.dp(this, 0), Ui.v(this, 10));
+        row.setClickable(true);
+        row.setFocusable(false);
+
+        TextView tv = Ui.text(this, Dates.shortDate(Ui.nz(state.date)),
+                Ui.T_LABEL, Ui.onSurfaceVariant(this), false);
+        row.addView(tv);
+
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { pickDate(); }
+        });
+        return row;
+    }
+
+    /** 一条极细分隔线。 */
+    private View hairline(int color) {
+        View v = new View(this);
+        v.setBackgroundColor(color);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, Ui.dp(this, 1));
+        v.setLayoutParams(lp);
+        return v;
     }
 
     // ================== 配图 ==================
@@ -156,7 +269,7 @@ public class NoteEditorActivity extends BaseSettingsActivity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        int pad = Ui.dp(this, 4);
+        int pad = Ui.dp(this, 2);
         row.setPadding(pad, pad, pad, pad);
 
         // 已有图片的缩略图
@@ -196,7 +309,7 @@ public class NoteEditorActivity extends BaseSettingsActivity {
         LinearLayout addBtn = new LinearLayout(this);
         addBtn.setGravity(Gravity.CENTER);
         addBtn.setBackground(Ui.round(this, Ui.surfaceContainer(this),
-                Ui.outlineVariant(this), Ui.R_S, 1));
+                Ui.outlineVariant(this), Ui.R_S, 1f));
         LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(
                 Ui.dp(this, 80), Ui.dp(this, 80));
         addBtn.setLayoutParams(alp);
@@ -261,27 +374,6 @@ public class NoteEditorActivity extends BaseSettingsActivity {
 
     // ================== 日期 ==================
 
-    /** 日期行：点选打开日期选择器（与待办编辑页同一套交互）。 */
-    private View dateRow() {
-        LinearLayout row = Ui.row(this);
-        int ph = Ui.dp(this, 14), pv = Ui.v(this, 11);
-        row.setPadding(ph, pv, ph, pv);
-        row.setMinimumHeight(Ui.vMin(this, 48));
-        row.setBackground(Ui.ripple(this, Ui.surfaceContainer(this), Ui.R_S));
-        row.setClickable(true);
-        row.setFocusable(true);
-
-        TextView tv = Ui.text(this, Dates.shortDate(Ui.nz(state.date)),
-                Ui.T_BODY + 1, Ui.onSurface(this), false);
-        tv.setLayoutParams(Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        row.addView(tv);
-
-        row.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { pickDate(); }
-        });
-        return row;
-    }
-
     /** 日期选择器——只选日期。 */
     private void pickDate() {
         String d = Ui.nz(state.date);
@@ -297,6 +389,79 @@ public class NoteEditorActivity extends BaseSettingsActivity {
                         reapplyTheme();
                     }
                 }, y, m, day).show();
+    }
+
+    // ================== 底部浮动工具栏 ==================
+
+    /**
+     * 底部工具栏：日期 / 重点 / 图片 / 保存。
+     * 纯图标、大间距、无文字标签——极简，像华为笔记键盘上方那条工具条。
+     */
+    private View bottomToolbar() {
+        toolbar = Ui.column(this);
+        toolbar.setBackgroundColor(Ui.surface(this));
+
+        toolbar.addView(hairline(Ui.outlineVariant(this)));
+
+        LinearLayout btnRow = Ui.row(this);
+        btnRow.setGravity(Gravity.CENTER_VERTICAL);
+        int ph = Ui.dp(this, 16), pv = Ui.v(this, 10);
+        btnRow.setPadding(ph, pv, ph, pv);
+
+        btnRow.addView(toolIcon(R.drawable.ic_calendar, "日期", new Runnable() {
+            @Override public void run() { pickDate(); }
+        }));
+        btnRow.addView(toolIcon(R.drawable.ic_star, "重点", new Runnable() {
+            @Override public void run() { focusField(keyPointsField); }
+        }));
+        btnRow.addView(toolIcon(R.drawable.ic_add, "图片", new Runnable() {
+            @Override public void run() { pickImage(); }
+        }));
+        // 不放保存按钮——顶栏 ✓ 已经是保存入口，底部只做工具，职责清晰
+        btnRow.addView(Ui.spacer(this));
+        toolbar.addView(btnRow);
+        return toolbar;
+    }
+
+    /** 工具栏的纯图标按钮（无文字），大点击区。 */
+    private View toolIcon(int iconRes, String desc, final Runnable action) {
+        LinearLayout b = new LinearLayout(this);
+        b.setOrientation(LinearLayout.HORIZONTAL);
+        b.setGravity(Gravity.CENTER);
+        b.setClickable(true);
+        b.setFocusable(true);
+        b.setBackground(Ui.ripple(this, Color.TRANSPARENT, Ui.R_S));
+        int pad = Ui.dp(this, 12);
+        b.setPadding(pad, Ui.v(this, 8), pad, Ui.v(this, 8));
+        b.setMinimumWidth(Ui.vMin(this, 44));
+        b.setMinimumHeight(Ui.vMin(this, 44));
+
+        ImageView iv = Icons.icon(this, iconRes, Ui.onSurfaceVariant(this), 24);
+        b.addView(iv);
+        b.setContentDescription(desc);
+
+        b.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { action.run(); }
+        });
+        return b;
+    }
+
+    /** 保存按钮：填充色，强调主操作。 */
+    private View saveButton() {
+        TextView btn = Ui.filledButton(this, "保存");
+        btn.setMinHeight(Ui.vMin(this, 40));
+        btn.setPadding(Ui.dp(this, 24), Ui.v(this, 8), Ui.dp(this, 24), Ui.v(this, 8));
+        btn.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { save(); }
+        });
+        return btn;
+    }
+
+    /** 把焦点移到指定字段并弹键盘。 */
+    private void focusField(EditText et) {
+        et.requestFocus();
+        InputMethodManager imm = (InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (imm != null) imm.showSoftInput(et, 0);
     }
 
     // ================== 保存 ==================
@@ -320,17 +485,5 @@ public class NoteEditorActivity extends BaseSettingsActivity {
         db.saveNote(n);
         Tip.success(this, editing != null ? "笔记已更新" : "笔记已创建");
         finish();
-    }
-
-    /** 对话框里的字段标签。 */
-    private void formLabel(LinearLayout body, String text) {
-        TextView lb = Ui.text(this, text, Ui.T_LABEL,
-                Ui.onSurfaceVariant(this), true);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.topMargin = Ui.v(this, 8);
-        lp.bottomMargin = Ui.v(this, 6);
-        lb.setLayoutParams(lp);
-        body.addView(lb);
     }
 }

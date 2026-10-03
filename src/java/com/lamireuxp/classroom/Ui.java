@@ -29,7 +29,9 @@ import android.widget.TextView;
  *  - 颜色：语义色系统（primary / primaryContainer / surface / surfaceContainer…）
  *  - 间距：4 / 8 / 12 / 16 / 24 dp 网格
  *  - 圆角：4(dp极小) / 8(small) / 12(medium) / 16(large) / 28(extraLarge) / 999(full)
- *  - 层次：用 surfaceContainer 分级 + 阴影（elevation）表达，而非粗描边
+ *  - 层次：用 surfaceContainer 表面阶梯表达，不靠阴影——阴影只留给真正浮在
+ *    内容上的东西（FAB、对话框）。见 awesome-design-md 里 Notion/Linear/Apple
+ *    三家 DESIGN.md 的共识：卡片是平的，色阶即层级。
  */
 public final class Ui {
 
@@ -809,8 +811,8 @@ public final class Ui {
             seg.setPadding(0, v(c, 10), 0, v(c, 10));
             seg.setMinimumHeight(dp(c, 44));
             if (active) {
+                // 选中态 = 表面提亮（activeBg 比容器高一级），不再垫阴影
                 seg.setBackground(ripple(c, activeBg, R_FULL));
-                elevation(seg, 1f);
             } else {
                 seg.setBackground(ripple(c, Color.TRANSPARENT, R_FULL));
             }

@@ -10,28 +10,35 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 /**
- * 待办编辑页 —— 新建待办的独立页面。
+ * 待办编辑页 —— 新建 / 编辑待办的独立页面。
  *
- * 原来用 Dialogs.form 弹窗（View body 版），现在改成全屏页面。待办表单里
+ * 原来用 Dialogs.form 弹窗（View body 版），后来改成全屏页面。待办表单里
  * 有优先级分段选择和提醒选择器，选了之后要重建表单体——弹窗里重建会让
  * 焦点丢失，全屏页面用 BaseSettingsActivity 的 reapplyTheme() 重建，
  * 和 AiSettingsActivity 切协议同一套 capture → rebuild → restore 模式。
  *
- * Intent extras：courseId（必填）。
+ * 1.7 起支持**编辑已有待办**（todoId extra）并带**备注**字段——原来建错了
+ * 只能删掉重来，作业要求、考试范围这类补充信息也没地方放。
+ *
+ * Intent extras：courseId（必填）、todoId（可选——有=编辑、无=新建）。
  * 保存后 finish()，CourseActivity.onResumed() 会自动 renderTabs + renderContent。
  */
 public class TodoEditorActivity extends BaseSettingsActivity {
 
     private Db db;
     private String courseId;
+    /** 编辑态时持有原待办；新建态为 null。 */
+    private Db.Todo editing;
 
     /** 表单状态：优先级 / 提醒的选择会触发重建表单，已填的值要先捞回这里。 */
     private static final class Form {
         String title = "";
+        String note = "";
         String due = Dates.today();
         String priority = "medium";
         long remindAt;
         EditText titleField;
+        EditText noteField;
     }
 
     private final Form form = new Form();
@@ -41,24 +48,53 @@ public class TodoEditorActivity extends BaseSettingsActivity {
     protected void onCreateUi(Bundle b) {
         db = Db.get(this);
         courseId = getIntent().getStringExtra("courseId");
+        String todoId = getIntent().getStringExtra("todoId");
+        if (todoId != null && todoId.length() > 0) {
+            editing = db.todo(todoId);
+        }
+        if (editing != null) {
+            // 编辑态：原数据进表单。doneAt 留在 editing 对象上，保存时原样写回。
+            form.title = Ui.nz(editing.title);
+            form.note = Ui.nz(editing.note);
+            form.due = (editing.due != null && editing.due.length() > 0)
+                    ? editing.due : Dates.today();
+            form.priority = (editing.priority != null && editing.priority.length() > 0)
+                    ? editing.priority : "medium";
+            form.remindAt = editing.remindAt;
+        }
         super.onCreateUi(b);
     }
 
     @Override
     protected String title() {
-        return "新建待办";
+        return editing != null ? "编辑待办" : "新建待办";
     }
 
-    @Override
     /** 换主题重建前先把输入框里的值捞回 form——输入到一半的内容不能丢。 */
+    @Override
     protected void onRebuildUi() {
-        if (form.titleField != null) form.title = form.titleField.getText().toString();
+        capture();
         super.onRebuildUi();
+    }
+
+    private void capture() {
+        if (form.titleField != null) form.title = form.titleField.getText().toString();
+        if (form.noteField != null) form.note = form.noteField.getText().toString();
     }
 
     @Override
     protected void fillBody(LinearLayout body) {
         form.titleField = labeledField("任务内容", "完成第三章习题", form.title);
+
+        // 备注：多行，选填——作业要求、考试范围、老师口头强调的东西
+        formLabel(body, "备注（选填）");
+        form.noteField = Ui.input(this, "作业要求、考试范围…");
+        form.noteField.setSingleLine(false);
+        form.noteField.setGravity(Gravity.TOP | Gravity.START);
+        form.noteField.setMinLines(2);
+        form.noteField.setMaxLines(6);
+        if (form.note.length() > 0) form.noteField.setText(form.note);
+        body.addView(form.noteField);
 
         // 截止日期 / 优先级 / 提醒都是「点选」而非手输——放在一个独立容器里，
         // 选了之后只重建这个容器，不重建整页（重建整页会让刚填的标题丢焦点）
@@ -78,7 +114,7 @@ public class TodoEditorActivity extends BaseSettingsActivity {
     /** 截止日期 + 优先级分段 + 提醒行。选了任一项后只重建这一块。 */
     private void renderSelectors() {
         // 先把 EditText 里的值捞回 form（重建会销毁旧 EditText）
-        if (form.titleField != null) form.title = form.titleField.getText().toString();
+        capture();
 
         formBody.removeAllViews();
 
@@ -104,6 +140,13 @@ public class TodoEditorActivity extends BaseSettingsActivity {
         // 提醒
         formLabel(formBody, "提醒");
         formBody.addView(remindRow());
+
+        // 编辑态：建一条元信息，用户知道这条是什么时候建的
+        if (editing != null && editing.created > 0) {
+            formLabel(formBody, "创建于 " + Dates.stamp(editing.created)
+                    + (editing.completed && editing.doneAt > 0
+                       ? " · 完成于 " + Dates.stamp(editing.doneAt) : ""));
+        }
     }
 
     /** 截止日期行：点选打开日期选择器（和提醒用同一套交互）。 */
@@ -222,25 +265,29 @@ public class TodoEditorActivity extends BaseSettingsActivity {
 
     /** 保存：校验任务内容 → 组装 Todo → 落库 → 排闹钟 → 提示 → finish。 */
     private void save() {
-        String title = form.titleField.getText().toString().trim();
+        capture();
+        String title = form.title.trim();
         if (title.length() == 0) {
             Tip.error(this, "请填写任务内容");
             return;
         }
-        Db.Todo todo = new Db.Todo();
-        todo.id = Id.gen();
+        // 编辑态在原对象上改（保住 id / created / doneAt）；新建态全新一条
+        Db.Todo todo = editing != null ? editing : new Db.Todo();
+        if (editing == null) todo.id = Id.gen();
         todo.courseId = courseId;
         todo.title = title;
+        todo.note = form.note;
         todo.due = form.due;
         todo.priority = form.priority;
         todo.remindAt = form.remindAt;
         db.saveTodo(todo);
-        // 存完立刻排闹钟。
+        // 存完立刻重排闹钟——编辑改了提醒时刻、或把已完成的又改回进行中，
+        // 都要让闹钟跟上库里最新的值（schedule 内部先 cancel 再 set，不会残留旧的）
         Reminders.schedule(this, todo);
-        if (form.remindAt > 0 && form.remindAt <= System.currentTimeMillis()) {
-            Tip.error(this, "已创建，但提醒时间已过，不会提醒");
+        if (form.remindAt > 0 && form.remindAt <= System.currentTimeMillis() && !todo.completed) {
+            Tip.error(this, editing != null ? "已保存，但提醒时间已过，不会提醒" : "已创建，但提醒时间已过，不会提醒");
         } else {
-            Tip.success(this, "待办已创建");
+            Tip.success(this, editing != null ? "待办已更新" : "待办已创建");
         }
         finish();
     }
