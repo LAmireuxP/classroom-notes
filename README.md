@@ -1,7 +1,7 @@
 # 课堂笔记 · Android 原生版
 
-课程笔记、待办、语音转写、AI 总结。纯原生 Java 实现，零第三方依赖，APK 约 172 KB。
-当前版本 **1.8**。
+课程笔记、待办、语音转写、AI 总结。纯原生 Java 实现，零第三方依赖，APK 约 232 KB。
+当前版本 **1.8.1**。
 
 ## 参考与致谢
 
@@ -48,7 +48,7 @@ WebView 方案，几项核心能力在 WebView 里无法工作（`webkitSpeechRe
 
 ## 下载
 
-- 应用（国内可直连）：https://lamireuxp.github.io/classroom-notes/dist/classroom-1.8.apk
+- 应用（国内可直连）：https://lamireuxp.github.io/classroom-notes/dist/classroom-1.8.1.apk
 - 发布页：https://github.com/LAmireuxP/classroom-notes/releases
 
 从 1.0 起各版本签名一致，可直接覆盖升级，笔记数据不会丢。
@@ -139,6 +139,12 @@ App 里的对应行为：
 - `Dates` / `Id` / `Extract`：日期、ID 生成、本地关键词提取（AI 不可用时的兜底）
 
 ## 更新日志
+
+### 1.8.1
+
+- **图标换回第一版**：应用内顶栏标志从设计稿的「鹿角 + 话筒 + 声波」换回第一版的
+  **五角星**（`ic_brand` 删除）；启动图标换回 1.0 的未经量化版本（图形与 1.3 起发布的
+  完全一致，画质更准）。顺带恢复第一版有、1.2.1 被误删的 `ic_stats` 柱状图图标备用。
 
 ### 1.8
 

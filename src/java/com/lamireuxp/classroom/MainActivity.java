@@ -202,11 +202,10 @@ public class MainActivity extends BaseActivity implements Dialogs.DialogHost {
         bar.setGravity(Gravity.CENTER_VERTICAL);
         bar.setPadding(Ui.dp(this, 16), Ui.v(this, 10), Ui.dp(this, 8), 0);
 
-        // 顶栏标志：用设计稿那个「鹿角 + 话筒 + 声波」的单色矢量。
-        // 它由 tools/svg-to-vectordrawable.py 从原设计 SVG 生成（描边改纯色——
-        // VectorDrawable 不支持描边渐变，而这里本来就要用 SRC_IN 套主题色，渐变没有意义）。
-        // 外边两道声波带 strokeAlpha=0.7，SRC_IN 只换颜色不换 alpha，那层「弱化」保住了。
-        ImageView logo = Icons.icon(this, R.drawable.ic_brand, Ui.primary(this), 26);
+        // 顶栏标志：第一版的五角星（ic_star）。中间版本换过「鹿角 + 话筒 + 声波」
+        // 的设计稿矢量（ic_brand），用户要求换回第一版，所以这里回到 ic_star。
+        // ic_brand.xml 已删除——留着一个不再引用的资源，下次换图标时会误以为它还在用。
+        ImageView logo = Icons.icon(this, R.drawable.ic_star, Ui.primary(this), 26);
         bar.addView(logo);
         bar.addView(Ui.spacer(this));
 
