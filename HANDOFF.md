@@ -343,3 +343,20 @@ adb install -r build/课堂笔记-v1.6.apk
 注意：`icon-backup-original/` 里的图标**不是** 1.5 发布的图标——它是 1.3 版的
 老资产（未压缩、9441 B vs 1.5 的 3149 B）。还原图标时应该从 git 历史取
 （`git checkout c9810c3 -- src/res/mipmap-*`），不要从 icon-backup-original/ 取。
+
+## 拼豆图纸模块（1.9.0 新增）
+
+功能对齐颂拼豆（com.pixel.ibeads）的本地功能；社区/云端同步不含。零三方依赖不变。
+
+- 数据层：Db VERSION 7，`bead_patterns` 表（pixels BLOB = w×h×pages，值 = colors 下标
+  `& 0xFF`，255 = 空格）；参考图在 `filesDir/bead-ref/<patternId>.jpg`。
+- 色库：`BeadPalettes`（10 品牌 1249 色，ΔE2000 最近色），数据集来自 bead-color-data
+  （CC BY 4.0），压缩存放于 `src/res/raw/bead_colors.csv.gz`——**注意 R 资源名是
+  `bead_colors_csv`**（aapt2 把点换成了下划线），不是 bead_colors。
+- 转换：`BeadConvert`（中位数切分 + FS 抖动），尺寸限制 MIN/MAX_SIZE = 16/256。
+- 三个页面：`BeadHomeActivity`（库：搜索/专辑/收藏/复刻/bpat 导入）、
+  `BeadImportActivity`（选图 → 滑条调尺寸 → 后台生成）、
+  `BeadEditorActivity`（像素编辑/色板/图层/统计/导出 PNG·PDF·bpat）。
+- 备份：Backup.java 里 `beadPatterns` 数组（pixels Base64 NO_WRAP）+ zip 内
+  `bead-ref/` 条目；导入只在备份带该字段时整体替换，老备份不清图纸。
+- 入口：首页 `beadEntry()` 卡片（MainActivity），Manifest 注册三个 Activity。

@@ -17,7 +17,7 @@ import java.util.List;
 public class Db extends SQLiteOpenHelper {
 
     private static final String NAME = "classroom.db";
-    private static final int VERSION = 6;
+    private static final int VERSION = 7;
 
     private static Db sInstance;
 
@@ -80,6 +80,7 @@ public class Db extends SQLiteOpenHelper {
                 "deleted_at INTEGER DEFAULT 0)");
         db.execSQL("CREATE INDEX idx_notes_course ON notes(course_id)");
         db.execSQL("CREATE INDEX idx_todos_course ON todos(course_id)");
+        createBeadTables(db);
     }
 
     @Override
@@ -106,6 +107,29 @@ public class Db extends SQLiteOpenHelper {
             db.execSQL("ALTER TABLE todos ADD COLUMN note TEXT DEFAULT ''");
             db.execSQL("ALTER TABLE todos ADD COLUMN done_at INTEGER DEFAULT 0");
         }
+        if (oldV < 7) createBeadTables(db);
+    }
+
+    /**
+     * 拼豆图纸表（v7 新增）。与课程/笔记/待办完全独立：图纸不属于任何课程，
+     * 也没有软删除——图纸是「作品」而不是「记录」，误删的痛苦远小于回收站的复杂度，
+     * 删除前由界面确认。像素存 BLOB（w*h*pages 字节，值 = colors 下标，255 = 空格），
+     * 配色存 JSON 字符串（"brand:code" 数组），序列化在 BeadPalettes。
+     */
+    private static void createBeadTables(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS bead_patterns(" +
+                "id TEXT PRIMARY KEY," +
+                "title TEXT," +
+                "album TEXT DEFAULT ''," +
+                "w INTEGER NOT NULL," +
+                "h INTEGER NOT NULL," +
+                "pages INTEGER DEFAULT 1," +
+                "pixels BLOB," +
+                "colors TEXT," +
+                "ref TEXT DEFAULT ''," +
+                "fav INTEGER DEFAULT 0," +
+                "created INTEGER DEFAULT 0," +
+                "updated INTEGER DEFAULT 0)");
     }
 
     // ---------------- 事务 ----------------
@@ -1051,6 +1075,153 @@ public class Db extends SQLiteOpenHelper {
     /** null 安全取字符串：SQLite 里空字段读出来是 null，界面与拼接都按空串处理。 */
     private static String nz(String s) { return s == null ? "" : s; }
 
+    // ---------------- 拼豆图纸 ----------------
+
+    /** 一张拼豆图纸。像素/配色的编码约定见 createBeadTables() 与 BeadPalettes。 */
+    public static class BeadPattern {
+        public String id, title, album;
+        /** 参考图（对比模式用）：filesDir/bead-ref/ 下的文件绝对路径，空 = 无。 */
+        public String ref = "";
+        public int w, h, pages = 1;
+        /** 像素：w*h*pages 字节，值 = colors 下标（读时 & 0xFF），255 = 空格。 */
+        public byte[] pixels;
+        /** 配色表："brand:code" 字符串列表（如 "mard:A1"）。 */
+        public List<String> colors = new ArrayList<String>();
+        public boolean fav;
+        public long created, updated;
+    }
+
+    /** 列顺序固定，readBeadPattern() 与备份/导入共用这个顺序。 */
+    private static final String BEAD_COLS =
+            "id,title,album,w,h,pages,pixels,colors,ref,fav,created,updated";
+
+    private static BeadPattern readBeadPattern(Cursor c) {
+        BeadPattern p = new BeadPattern();
+        p.id = c.getString(0);
+        p.title = nz(c.getString(1));
+        p.album = nz(c.getString(2));
+        p.w = c.getInt(3);
+        p.h = c.getInt(4);
+        p.pages = Math.max(1, c.getInt(5));
+        p.pixels = c.getBlob(6);
+        p.colors = BeadPalettes.colorsFromJson(c.getString(7));
+        p.ref = nz(c.getString(8));
+        p.fav = c.getInt(9) == 1;
+        p.created = c.getLong(10);
+        p.updated = c.getLong(11);
+        // 像素长度校验：老版本/外部写入可能留下错长数据，画布按短表读会越界。
+        // 短了补空格、长了截断——数据脏时宁可丢格子也不能崩溃。
+        int need = p.w * p.h * p.pages;
+        if (p.pixels == null || p.pixels.length != need) {
+            byte[] fix = new byte[need];
+            java.util.Arrays.fill(fix, (byte) 255);
+            if (p.pixels != null) {
+                System.arraycopy(p.pixels, 0, fix, 0, Math.min(p.pixels.length, need));
+            }
+            p.pixels = fix;
+        }
+        return p;
+    }
+
+    /**
+     * 图纸库列表。query = 标题模糊搜索；album = null 全部专辑、"" 仅未分类、
+     * 其他值精确匹配；favOnly = 只看收藏。排序固定 updated DESC——「最近在做的」排最前。
+     */
+    public List<BeadPattern> beadPatterns(String query, String album, boolean favOnly) {
+        List<BeadPattern> list = new ArrayList<BeadPattern>();
+        StringBuilder sql = new StringBuilder("SELECT ").append(BEAD_COLS)
+                .append(" FROM bead_patterns WHERE 1=1");
+        List<String> args = new ArrayList<String>();
+        if (query != null && query.length() > 0) {
+            sql.append(" AND title LIKE ?");
+            args.add("%" + query + "%");
+        }
+        if (album != null) {
+            sql.append(" AND album=?");
+            args.add(album);
+        }
+        if (favOnly) sql.append(" AND fav=1");
+        sql.append(" ORDER BY updated DESC");
+        Cursor c = getReadableDatabase().rawQuery(sql.toString(), args.toArray(new String[0]));
+        try {
+            while (c.moveToNext()) list.add(readBeadPattern(c));
+        } finally {
+            c.close();
+        }
+        return list;
+    }
+
+    /** 单张图纸；不存在（已删/备份恢复后 id 失效）返回 null。 */
+    public BeadPattern beadPattern(String id) {
+        Cursor c = getReadableDatabase().rawQuery(
+                "SELECT " + BEAD_COLS + " FROM bead_patterns WHERE id=?",
+                new String[]{id});
+        try {
+            return c.moveToFirst() ? readBeadPattern(c) : null;
+        } finally {
+            c.close();
+        }
+    }
+
+    /**
+     * 保存图纸（插入或更新）。更新时刷新 updated——图纸库按 updated 排序，
+     * 自动保存的语义就是「刚才还在编辑」。fav 不走这里（见 setBeadFav），收藏
+     * 不该把「最近修改」刷新掉。
+     */
+    public void saveBeadPattern(BeadPattern p) {
+        ContentValues v = new ContentValues();
+        v.put("title", nz(p.title));
+        v.put("album", nz(p.album));
+        v.put("w", p.w);
+        v.put("h", p.h);
+        v.put("pages", Math.max(1, p.pages));
+        v.put("pixels", p.pixels);
+        v.put("colors", BeadPalettes.colorsToJson(p.colors));
+        v.put("ref", nz(p.ref));
+        long now = System.currentTimeMillis();
+        int rows = getWritableDatabase().update("bead_patterns", v, "id=?", new String[]{p.id});
+        if (rows == 0) {
+            v.put("id", p.id);
+            v.put("fav", p.fav ? 1 : 0);
+            v.put("created", p.created == 0 ? now : p.created);
+            v.put("updated", p.updated == 0 ? now : p.updated);
+            getWritableDatabase().insert("bead_patterns", null, v);
+        } else {
+            v.put("updated", now);
+            getWritableDatabase().update("bead_patterns", v, "id=?", new String[]{p.id});
+        }
+    }
+
+    /** 收藏切换。单独一条路径，不刷新 updated（收藏不是修改）。 */
+    public void setBeadFav(String id, boolean fav) {
+        ContentValues v = new ContentValues();
+        v.put("fav", fav ? 1 : 0);
+        getWritableDatabase().update("bead_patterns", v, "id=?", new String[]{id});
+    }
+
+    /** 删除图纸（硬删）。参考图文件由调用方（BeadHomeActivity）顺手清掉。 */
+    public void deleteBeadPattern(String id) {
+        getWritableDatabase().delete("bead_patterns", "id=?", new String[]{id});
+    }
+
+    /** 专辑列表（非空专辑名，字母序）。图纸表很小，DISTINCT 全扫足够。 */
+    public List<String> beadAlbums() {
+        List<String> out = new ArrayList<String>();
+        Cursor c = getReadableDatabase().rawQuery(
+                "SELECT DISTINCT album FROM bead_patterns WHERE album!='' ORDER BY album", null);
+        try {
+            while (c.moveToNext()) out.add(nz(c.getString(0)));
+        } finally {
+            c.close();
+        }
+        return out;
+    }
+
+    /** 图纸总数（首页入口卡显示用）。 */
+    public int beadPatternCount() {
+        return count("SELECT COUNT(*) FROM bead_patterns");
+    }
+
     // ---------------- 统计 ----------------
 
     /** 优先级的固定顺序，兼 todoByPriority() 的下标含义。 */
@@ -1123,6 +1294,11 @@ public class Db extends SQLiteOpenHelper {
         } finally {
             c.close();
         }
+    }
+
+    /** 跑一条写语句（带参数）。给「批量改某字段」这种一次性 SQL 用，不进模型层。 */
+    public void exec(String sql, Object[] args) {
+        getWritableDatabase().execSQL(sql, args);
     }
 
     // ---------------- 工具 ----------------

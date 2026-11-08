@@ -2,6 +2,7 @@ package com.lamireuxp.classroom;
 
 import android.content.Context;
 import android.net.Uri;
+import android.util.Base64;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -93,7 +94,32 @@ public final class Backup {
             courses.put(co);
         }
         root.put("courses", courses);
+        // 拼豆图纸随主备份一起走：图纸不在课程树里，单独放一层，
+        // 旧版本读到这个字段会忽略，不影响与网页版数据的互通。
+        root.put("beadPatterns", exportBeads(db));
         return root.toString(2);
+    }
+
+    /** 图纸列表导出：pixels 用 Base64 装进 JSON，参考图只存相对文件名（文件由 zip 通道带走）。 */
+    private static JSONArray exportBeads(Db db) throws Exception {
+        JSONArray arr = new JSONArray();
+        for (Db.BeadPattern p : db.beadPatterns(null, null, false)) {
+            JSONObject o = new JSONObject();
+            o.put("id", p.id);
+            o.put("title", nz(p.title));
+            o.put("album", nz(p.album));
+            o.put("w", p.w);
+            o.put("h", p.h);
+            o.put("pages", p.pages);
+            o.put("colors", new JSONArray(BeadPalettes.colorsToJson(p.colors)));
+            o.put("pixels", Base64.encodeToString(p.pixels, Base64.NO_WRAP));
+            o.put("ref", refBasename(p.ref));
+            o.put("fav", p.fav);
+            o.put("created", p.created);
+            o.put("updated", p.updated);
+            arr.put(o);
+        }
+        return arr;
     }
 
     /**
@@ -123,6 +149,7 @@ public final class Backup {
         // 不再逐条查存在性，也不再出现「外层事务里套内层事务」——
         // 那样一旦内层失败只回滚内层，外层照样提交，会留下半新半旧的库。
         Db.get(c).replaceAll(parsed.courses, parsed.notes, parsed.todos);
+        restoreBeads(c, root, parsed);
         return parsed.courses.size();
     }
 
@@ -131,6 +158,7 @@ public final class Backup {
         final List<Db.Course> courses = new ArrayList<Db.Course>();
         final List<Db.Note> notes = new ArrayList<Db.Note>();
         final List<Db.Todo> todos = new ArrayList<Db.Todo>();
+        final List<Db.BeadPattern> beads = new ArrayList<Db.BeadPattern>();
     }
 
     /**
@@ -286,6 +314,7 @@ public final class Backup {
      */
     public static void writeZip(Context c, Uri uri, String json) throws Exception {
         Set<String> imageNames = collectImageNames(new JSONObject(json));
+        Set<String> beadRefs = collectBeadRefs(new JSONObject(json));
 
         OutputStream os = c.getContentResolver().openOutputStream(uri, "wt");
         if (os == null) throw new Exception("无法写入该位置");
@@ -303,6 +332,23 @@ public final class Backup {
                 if (!f.exists()) continue;   // 文件已不在（被删/换机），跳过不报错
                 ZipEntry ie = new ZipEntry("note-img/" + name);
                 zos.putNextEntry(ie);
+                FileInputStream fis = new FileInputStream(f);
+                try {
+                    int n;
+                    while ((n = fis.read(buf)) > 0) zos.write(buf, 0, n);
+                } finally {
+                    fis.close();
+                }
+                zos.closeEntry();
+            }
+
+            // 拼豆参考图同通道打包：bead-ref/<文件名>，与 note-img 互不干扰。
+            File refDir = new File(c.getFilesDir(), "bead-ref");
+            for (String name : beadRefs) {
+                File f = new File(refDir, name);
+                if (!f.exists()) continue;
+                ZipEntry re = new ZipEntry("bead-ref/" + name);
+                zos.putNextEntry(re);
                 FileInputStream fis = new FileInputStream(f);
                 try {
                     int n;
@@ -347,6 +393,8 @@ public final class Backup {
         if (in == null) throw new Exception("无法读取该文件");
         File imgDir = new File(c.getFilesDir(), "note-img");
         imgDir.mkdirs();
+        File refDir = new File(c.getFilesDir(), "bead-ref");
+        refDir.mkdirs();
         ZipInputStream zis = new ZipInputStream(in);
         String json = null;
         byte[] buf = new byte[8192];
@@ -376,6 +424,23 @@ public final class Backup {
                     } finally {
                         fos.close();
                     }
+                } else if (name.startsWith("bead-ref/")) {
+                    // 与 note-img 同款防穿越：只取 basename。
+                    String fname = name.substring("bead-ref/".length());
+                    int slash = fname.lastIndexOf('/');
+                    if (slash >= 0) fname = fname.substring(slash + 1);
+                    if (fname.length() == 0 || fname.contains("..")) {
+                        zis.closeEntry();
+                        continue;
+                    }
+                    File f = new File(refDir, fname);
+                    FileOutputStream fos = new FileOutputStream(f);
+                    try {
+                        int n;
+                        while ((n = zis.read(buf)) > 0) fos.write(buf, 0, n);
+                    } finally {
+                        fos.close();
+                    }
                 }
                 zis.closeEntry();
             }
@@ -384,6 +449,93 @@ public final class Backup {
         }
         if (json == null) throw new Exception("备份包里没有 data.json");
         return importJson(c, json);
+    }
+
+    // ---------------- 拼豆图纸恢复 ----------------
+
+    /**
+     * 图纸恢复。只有备份里带 beadPatterns 字段才整体替换——
+     * 旧格式备份（1.9 之前）没有这个字段，导入它不该把用户已有的图纸清掉。
+     * 解析失败在 parse 阶段就抛出，事务保证数据库不被写一半。
+     */
+    private static void restoreBeads(Context c, JSONObject root, Parsed parsed) throws Exception {
+        if (!root.has("beadPatterns")) return;
+        parseBeads(c, root.optJSONArray("beadPatterns"), parsed);
+        Db db = Db.get(c);
+        db.transaction(new Runnable() {
+            public void run() {
+                db.exec("DELETE FROM bead_patterns", null);
+                for (Db.BeadPattern p : parsed.beads) db.saveBeadPattern(p);
+            }
+        });
+    }
+
+    /**
+     * 解析图纸记录。尺寸限制与 BeadConvert 的 MIN/MAX 一致；
+     * pixels 长度必须恰好等于 w*h*pages，多/少都视为文件损坏，整份导入放弃
+     * （静默截断会让图案在画布上悄悄变形，宁可让用户换一份完整备份）。
+     */
+    private static void parseBeads(Context c, JSONArray arr, Parsed p) throws Exception {
+        for (int i = 0; arr != null && i < arr.length(); i++) {
+            JSONObject o = arr.optJSONObject(i);
+            if (o == null) throw new Exception("第 " + (i + 1) + " 条图纸不是有效记录");
+            Db.BeadPattern b = new Db.BeadPattern();
+            b.id = idOrNew(o.optString("id", ""));
+            b.title = o.optString("title", "");
+            b.album = o.optString("album", "");
+            b.w = o.optInt("w", 0);
+            b.h = o.optInt("h", 0);
+            b.pages = Math.max(1, o.optInt("pages", 1));
+            if (b.w < BeadConvert.MIN_SIZE || b.w > BeadConvert.MAX_SIZE
+                    || b.h < BeadConvert.MIN_SIZE || b.h > BeadConvert.MAX_SIZE) {
+                throw new Exception("第 " + (i + 1) + " 条图纸尺寸超出范围（"
+                        + BeadConvert.MIN_SIZE + "-" + BeadConvert.MAX_SIZE + "）");
+            }
+            b.pixels = Base64.decode(o.optString("pixels", ""), Base64.NO_WRAP);
+            if (b.pixels == null || b.pixels.length != b.w * b.h * b.pages) {
+                throw new Exception("第 " + (i + 1) + " 条图纸像素数据不完整");
+            }
+            JSONArray colors = o.optJSONArray("colors");
+            for (int k = 0; colors != null && k < colors.length(); k++) {
+                b.colors.add(colors.optString(k, ""));
+            }
+            // 越界下标在画布上会显示成随机色块，导入时统一清成空格。
+            int n = b.colors.size();
+            for (int k = 0; k < b.pixels.length; k++) {
+                int v = b.pixels[k] & 0xFF;
+                if (v != BeadCanvasView.EMPTY && v >= n) b.pixels[k] = (byte) BeadCanvasView.EMPTY;
+            }
+            // 参考图是相对文件名，拼当前设备的 bead-ref 目录；空/绝对路径原样处理。
+            String ref = o.optString("ref", "");
+            if (ref.length() > 0 && !ref.startsWith("/")) {
+                ref = new File(c.getFilesDir(), "bead-ref/" + ref).getAbsolutePath();
+            }
+            b.ref = ref;
+            b.fav = o.optBoolean("fav", false);
+            b.created = o.optLong("created", System.currentTimeMillis());
+            b.updated = o.optLong("updated", System.currentTimeMillis());
+            p.beads.add(b);
+        }
+    }
+
+    /** 从导出的 JSON 里收集所有图纸参考图的文件名，writeZip 只打包这些。 */
+    private static Set<String> collectBeadRefs(JSONObject root) {
+        Set<String> names = new HashSet<String>();
+        JSONArray arr = root.optJSONArray("beadPatterns");
+        for (int i = 0; arr != null && i < arr.length(); i++) {
+            JSONObject o = arr.optJSONObject(i);
+            if (o == null) continue;
+            String name = refBasename(o.optString("ref", ""));
+            if (name.length() > 0) names.add(name);
+        }
+        return names;
+    }
+
+    /** 参考图路径转相对文件名（basename）；已是空或相对名的原样返回。 */
+    private static String refBasename(String ref) {
+        if (ref == null || ref.length() == 0) return "";
+        int slash = ref.lastIndexOf('/');
+        return slash >= 0 ? ref.substring(slash + 1) : ref;
     }
 
     // ---------------- 配图文件名转换 ----------------

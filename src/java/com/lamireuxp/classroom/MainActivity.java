@@ -271,6 +271,7 @@ public class MainActivity extends BaseActivity implements Dialogs.DialogHost {
 
         // ---- 统计摘要。一门课都没有时不画：那时候还不存在「待办」这件事，
         //      页面上该出现的只有「去建第一门课」这一个引导 ----
+        belowBox.addView(beadEntry());
         if (db.courseCount() > 0) belowBox.addView(statsSummary());
         belowBox.addView(courseListContainer());
     }
@@ -560,6 +561,64 @@ public class MainActivity extends BaseActivity implements Dialogs.DialogHost {
         }
 
         return card;
+    }
+
+    /**
+     * 拼豆图纸入口卡。常显（与课程无关），样式仿 courseCard：
+     * 图标代替课程色条，chevron 指向右表示「进二级页」——courseCard 的 chevron
+     * 语义是列表行，这里是页面跳转，视觉上要保持同一套行高与圆角。
+     */
+    private View beadEntry() {
+        LinearLayout row = Ui.row(this);
+        LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rlp.bottomMargin = Ui.v(this, 10);
+        row.setLayoutParams(rlp);
+        int padH = Ui.dp(this, 16), padV = Ui.v(this, 14);
+        row.setPadding(padH, padV, Ui.dp(this, 8), padV);
+        row.setBackground(Ui.ripple(this, Ui.surfaceContainer(this), Ui.R_M));
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setMinimumHeight(Ui.vMin(this, 64));
+        Ui.pressScale(row);
+
+        LinearLayout icon = Icons.iconButton(this, R.drawable.ic_bead, 40,
+                Ui.primary(this));
+        LinearLayout.LayoutParams ilp = (LinearLayout.LayoutParams) icon.getLayoutParams();
+        ilp.rightMargin = Ui.dp(this, 12);
+        row.addView(icon);
+
+        LinearLayout mid = Ui.column(this);
+        LinearLayout.LayoutParams mp = Ui.lpW(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        mid.setLayoutParams(mp);
+        TextView name = Ui.text(this, "拼豆图纸", Ui.T_TITLE, Ui.onSurface(this), true);
+        mid.addView(name);
+        int n = db.beadPatternCount();
+        TextView metaTv = Ui.text(this,
+                (n > 0 ? n + " 张图纸" : "还没有图纸") + " · 图片转图纸 / 像素编辑 / 导出 PDF",
+                Ui.T_LABEL, Ui.onSurfaceVariant(this), false);
+        LinearLayout.LayoutParams mtp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        mtp.topMargin = Ui.v(this, 3);
+        metaTv.setLayoutParams(mtp);
+        mid.addView(metaTv);
+        row.addView(mid);
+
+        // 下箭头转 90° 当右箭头用（同 statsSummary 的做法，省一个图标资源）
+        ImageView chevron = Icons.icon(this, R.drawable.ic_chevron_down,
+                Ui.onSurfaceVariant(this), 18);
+        chevron.setRotation(-90f);
+        LinearLayout.LayoutParams chp = new LinearLayout.LayoutParams(
+                Ui.dp(this, 18), Ui.dp(this, 18));
+        chevron.setLayoutParams(chp);
+        row.addView(chevron);
+
+        row.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                startActivity(new Intent(MainActivity.this, BeadHomeActivity.class));
+            }
+        });
+        return row;
     }
 
     /** 统计行里的数字：用 onSurface 加粗，比旁边的标签更抢眼。 */
